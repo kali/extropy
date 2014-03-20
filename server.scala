@@ -6,6 +6,7 @@ import java.net.InetSocketAddress
 import akka.event.Logging
 import scala.collection.mutable.Buffer
 
+import org.bson.BSONObject
 
 object Boot {
     def main(args:Array[String]) {
@@ -53,6 +54,24 @@ case class ParsedMessage(data:ByteString) {
     }
 
     abstract sealed class Op {}
+
+    def readCString(iterator:ByteIterator):String = {
+        val cstring = iterator.clone.takeWhile( _ != 0).toArray
+        val result = new String(cstring, "UTF-8")
+        iterator.drop(cstring.length)
+        iterator.getByte // 0-terminated
+        result
+    }
+
+    def readBSONObject(iterator:ByteIterator):BSONObject = {
+        val size = iterator.clone.getInt
+        val result = bsonDecoder.readObject(iterator.clone.take(size).toArray)
+        iterator.drop(size)
+        result
+    }
+
+    val bsonDecoder = new org.bson.LazyBSONDecoder
+
 /*
 struct OP_QUERY {
     MsgHeader header;                 // standard message header
@@ -66,34 +85,36 @@ struct OP_QUERY {
                                       //  to return.  See below for details.
 }
 */
-/*
-    def readCString(data:ByteString):String = {
-        val zero = data.indexOf(0)
-        if(zero == -1)
-            return new String(data, "UTF-8")
-        else
-            return new String(data, 0, zero, "UTF-8")
-    }
-*/
-
-    def readCString(iterator:ByteIterator):String = {
-        val cstring = iterator.clone.takeWhile( _ != 0).toArray
-        val result = new String(cstring, "UTF-8")
-        iterator.drop(cstring.length)
-        iterator.getByte // 0-terminated
-        result
-    }
-
-    case class OpQuery(flags:Int, fullCollectionName:String, numberToSkip:Int, numberToReturn:Int) extends Op
+    case class OpQuery( flags:Int, fullCollectionName:String, numberToSkip:Int, numberToReturn:Int,
+                        query:BSONObject) extends Op
     object OpQuery {
-        def apply(data:ByteString):OpQuery = {
+        def parse(data:ByteString):OpQuery = {
             val it = data.iterator
             OpQuery(it.getInt,
                     readCString(it),
-                    it.getInt,
-                    it.getInt)
+                    it.getInt, it.getInt,
+                    readBSONObject(it))
         }
     }
+
+/*
+struct OP_REPLY {
+    MsgHeader header;         // standard message header
+    int32     responseFlags;  // bit vector - see details below
+    int64     cursorID;       // cursor id if client needs to do get more's
+    int32     startingFrom;   // where in the cursor this reply is starting
+    int32     numberReturned; // number of documents in the reply
+    document* documents;      // documents
+}
+*/
+    case class OpReply( responseFlags:Int, cursorID:Long, startingFrom:Int, numberReturned:Int) extends Op
+    object OpReply {
+        def parse(data:ByteString):OpReply = {
+            val it = data.iterator
+            OpReply(it.getInt, it.getLong, it.getInt, it.getInt)
+        }
+    }
+
     case class OpUnknown extends Op {}
 
     case class Header(messageLength:Int, requestId:Int, responseTo:Int, opCode:OpCode.Value)
@@ -104,7 +125,8 @@ struct OP_QUERY {
     }
 
     lazy val op = header.opCode match {
-        case OpCode.OP_QUERY => OpQuery(data.drop(16))
+        case OpCode.OP_QUERY => OpQuery.parse(data.drop(16))
+        case OpCode.OP_REPLY => OpReply.parse(data.drop(16))
         case _ => OpUnknown
     }
     override def toString() = s"$header: $op"
