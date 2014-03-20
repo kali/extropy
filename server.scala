@@ -36,6 +36,31 @@ class Server extends Actor {
     }
 }
 
+case class ParsedMessage(data:ByteString) {
+    implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
+
+    object OpCode extends Enumeration {
+        type OpCode = Value
+        val OP_REPLY = Value(1)
+        val OP_MSG = Value(1000)
+        val OP_UPDATE = Value(2001)
+        val OP_INSERT = Value(2002)
+        val RESERVED = Value(2003)
+        val OP_QUERY = Value(2004)
+        val OP_GET_MORE = Value(2005)
+        val OP_DELETE = Value(2006)
+        val OP_KILL_CURSORS = Value(2007)
+    }
+
+    case class Header(messageLength:Int, requestId:Int, responseTo:Int, opCode:OpCode.Value)
+
+    lazy val header = {
+        val it = data.iterator
+        Header(it.getInt, it.getInt, it.getInt, OpCode(it.getInt))
+    }
+    override def toString() = s"MESSAGE $header"
+}
+
 // this is the TCP server socket handler
 object IncomingConnectionActor {
     def props(socket:ActorRef) = Props(classOf[IncomingConnectionActor], socket)
@@ -53,12 +78,13 @@ class IncomingConnectionActor(socket:ActorRef) extends Actor {
 
     def receive = {
         case Received(data) =>
+            println("> " + ParsedMessage(data))
             incomingBuffer ++= data
             splitAndSend
 
         case PeerClosed     => context stop self
         case data:ByteString =>
-            println("< " + data)
+            println("< " + ParsedMessage(data))
             if(!waitingAck) {
                 socket ! Write(data, Ack)
                 waitingAck = true
