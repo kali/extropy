@@ -55,13 +55,13 @@ class IncomingConnectionActor(socket:ActorRef) extends Actor {
 
     def receive = {
         case Received(data) =>
-            println("> " + ParsedMessage(data))
+            println("> " + MessageParser.parse(data))
             incomingBuffer ++= data
             splitAndSend
 
         case PeerClosed     => context stop self
         case data:ByteString =>
-            println("< " + ParsedMessage(data))
+            println("< " + MessageParser.parse(data))
             if(!waitingAck) {
                 socket ! Write(data, Ack)
                 waitingAck = true
