@@ -13,6 +13,7 @@ object Boot {
     }
 }
 
+// this is the TCP socket/dispatcher
 class Server extends Actor {
 
     import Tcp._
@@ -28,70 +29,72 @@ class Server extends Actor {
         case CommandFailed(_: Bind) => context stop self
 
         case c @ Connected(remote, local) =>
-            val connection = sender()
-            val handler = context.actorOf(IncomingConnectionActor.props(connection))
-            connection ! Register(handler)
+            val socket = sender()
+            val handler = context.actorOf(IncomingConnectionActor.props(socket))
+            socket ! Register(handler)
     }
 }
 
+// this is the TCP server socket handler
 object IncomingConnectionActor {
-    def props(listener:ActorRef) = Props(classOf[IncomingConnectionActor], listener)
+    def props(socket:ActorRef) = Props(classOf[IncomingConnectionActor], socket)
 }
 
-case class Message(data:ByteString) {
-    
-}
-
-class IncomingConnectionActor(connection:ActorRef) extends Actor {
+class IncomingConnectionActor(socket:ActorRef) extends Actor {
     import Tcp._
     val client = context.actorOf(Client.props(self))
 
     def receive = {
         case Received(data) => {
-            println("> " + Message(data))
+            println("> " + data)
             client ! data
         }
         case PeerClosed     => context stop self
         case data: ByteString => {
-            println("< " + Message(data))
-            connection ! Write(data)
+            println("< " + data)
+            socket ! Write(data)
         }
     }
 }
 
+// this is the backend client
 object Client {
-    def props(listener:ActorRef) = Props(classOf[Client], listener)
+    def props(incoming:ActorRef) = Props(classOf[Client], incoming)
 }
 
-class Client(listener: ActorRef) extends Actor {
+class Client(incoming: ActorRef) extends Actor {
 
     import Tcp._
     import context.system
 
-    IO(Tcp) ! Connect(new InetSocketAddress("localhost", 27017))
+    IO(Tcp) ! Connect(new InetSocketAddress("www.virtual.ftnz.net", 27017))
+
+    var socket:ActorRef = null
 
     def receive = {
         case CommandFailed(_: Connect) =>
-              listener ! "connect failed"
+              incoming ! "connect failed"
               context stop self
         case c @ Connected(remote, local) =>
-            listener ! c
-            val connection = sender()
-            connection ! Register(self)
-            context become {
-                case data: ByteString =>
-                    connection ! Write(data)
-                case CommandFailed(w: Write) =>
-                // O/S buffer was full
-                    listener ! "write failed"
-                case Received(data) =>
-                    listener ! data
-                case "close" =>
-                    connection ! Close
-                case _: ConnectionClosed =>
-                    listener ! "connection closed"
-                    context stop self
-            }
+            incoming ! c
+            socket = sender()
+            socket ! Register(self)
+            context become active
+    }
+
+    def active:Receive = {
+        case data: ByteString =>
+            socket ! Write(data)
+        case CommandFailed(w: Write) =>
+        // O/S buffer was full
+            socket ! "write failed"
+        case Received(data) =>
+            socket ! data
+        case "close" =>
+            socket ! Close
+        case _: ConnectionClosed =>
+            socket ! "socket closed"
+            context stop self
     }
 }
 
