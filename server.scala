@@ -44,15 +44,27 @@ class IncomingConnectionActor(socket:ActorRef) extends Actor {
     import Tcp._
     val client = context.actorOf(Client.props(self))
 
+    var buffer:ByteString = ByteString.empty
+
     def receive = {
         case Received(data) => {
             println("> " + data)
-            client ! data
+            buffer = buffer ++ data
+            splitAndSend
         }
         case PeerClosed     => context stop self
         case data: ByteString => {
             println("< " + data)
             socket ! Write(data)
+        }
+    }
+
+    def splitAndSend = {
+        implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
+        while(buffer.length > 4 && buffer.iterator.getInt <= buffer.length) {
+            val data = buffer.take(buffer.iterator.getInt)
+            client ! data
+            buffer = buffer.drop(data.length)
         }
     }
 }
@@ -70,6 +82,7 @@ class Client(incoming: ActorRef) extends Actor {
     IO(Tcp) ! Connect(new InetSocketAddress("www.virtual.ftnz.net", 27017))
 
     var socket:ActorRef = null
+    var buffer:ByteString = ByteString.empty
 
     def receive = {
         case CommandFailed(_: Connect) =>
@@ -89,12 +102,22 @@ class Client(incoming: ActorRef) extends Actor {
         // O/S buffer was full
             socket ! "write failed"
         case Received(data) =>
-            socket ! data
+            buffer ++= data
+            splitAndSend
         case "close" =>
             socket ! Close
         case _: ConnectionClosed =>
             socket ! "socket closed"
             context stop self
+    }
+
+    def splitAndSend = {
+        implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
+        while(buffer.length > 4 && buffer.iterator.getInt <= buffer.length) {
+            val data = buffer.take(buffer.iterator.getInt)
+            incoming ! data
+            buffer = buffer.drop(data.length)
+        }
     }
 }
 
