@@ -4,6 +4,7 @@ import akka.io.{ IO, Tcp }
 import akka.util.ByteString
 import java.net.InetSocketAddress
 import akka.event.Logging
+import scala.collection.mutable.Buffer
 
 
 object Boot {
@@ -81,8 +82,14 @@ class Client(incoming: ActorRef) extends Actor {
 
     IO(Tcp) ! Connect(new InetSocketAddress("www.virtual.ftnz.net", 27017))
 
+    val log = Logging(context.system, this)
+
     var socket:ActorRef = null
-    var buffer:ByteString = ByteString.empty
+    var readBuffer:ByteString = ByteString.empty
+    val writeBuffer:Buffer[ByteString] = Buffer()
+    var waitingAck:Boolean = false
+
+    case object Ack extends Event
 
     def receive = {
         case CommandFailed(_: Connect) =>
@@ -96,27 +103,37 @@ class Client(incoming: ActorRef) extends Actor {
     }
 
     def active:Receive = {
-        case data: ByteString =>
-            socket ! Write(data)
-        case CommandFailed(w: Write) =>
-        // O/S buffer was full
-            socket ! "write failed"
         case Received(data) =>
-            buffer ++= data
-            splitAndSend
-        case "close" =>
-            socket ! Close
+            readBuffer ++= data
+            splitReadBuffer
+        case data:ByteString =>
+            writeBuffer += data
+            if(!waitingAck) {
+                socket ! Write(writeBuffer.head, Ack)
+                writeBuffer.trimStart(1)
+                waitingAck = true
+            }
+        case Ack => {
+            if(writeBuffer.isEmpty)
+                waitingAck = false
+            else {
+                socket ! Write(writeBuffer.head, Ack)
+                writeBuffer.trimStart(1)
+            }
+        }
+        case CommandFailed(w: Write) => socket ! "write failed" // should not happen
+        case "close" => socket ! Close
         case _: ConnectionClosed =>
             socket ! "socket closed"
             context stop self
     }
 
-    def splitAndSend = {
+    def splitReadBuffer = {
         implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
-        while(buffer.length > 4 && buffer.iterator.getInt <= buffer.length) {
-            val data = buffer.take(buffer.iterator.getInt)
+        while(readBuffer.length > 4 && readBuffer.iterator.getInt <= readBuffer.length) {
+            val data = readBuffer.take(readBuffer.iterator.getInt)
             incoming ! data
-            buffer = buffer.drop(data.length)
+            readBuffer = readBuffer.drop(data.length)
         }
     }
 }
