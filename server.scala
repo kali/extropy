@@ -45,27 +45,40 @@ class IncomingConnectionActor(socket:ActorRef) extends Actor {
     import Tcp._
     val client = context.actorOf(Client.props(self))
 
-    var buffer:ByteString = ByteString.empty
+    var incomingBuffer:ByteString = ByteString.empty
+
+    case object Ack extends Event
+    val writeBuffer:Buffer[ByteString] = Buffer()
+    var waitingAck:Boolean = false
 
     def receive = {
-        case Received(data) => {
-            println("> " + data)
-            buffer = buffer ++ data
+        case Received(data) =>
+            incomingBuffer ++= data
             splitAndSend
-        }
+
         case PeerClosed     => context stop self
-        case data: ByteString => {
+        case data:ByteString =>
             println("< " + data)
-            socket ! Write(data)
-        }
+            if(!waitingAck) {
+                socket ! Write(data, Ack)
+                waitingAck = true
+            } else
+                writeBuffer += data
+        case Ack =>
+            if(writeBuffer.isEmpty)
+                waitingAck = false
+            else {
+                socket ! Write(writeBuffer.head, Ack)
+                writeBuffer.trimStart(1)
+            }
     }
 
     def splitAndSend = {
         implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
-        while(buffer.length > 4 && buffer.iterator.getInt <= buffer.length) {
-            val data = buffer.take(buffer.iterator.getInt)
+        while(incomingBuffer.length > 4 && incomingBuffer.iterator.getInt <= incomingBuffer.length) {
+            val data = incomingBuffer.take(incomingBuffer.iterator.getInt)
             client ! data
-            buffer = buffer.drop(data.length)
+            incomingBuffer = incomingBuffer.drop(data.length)
         }
     }
 }
@@ -107,10 +120,10 @@ class Client(incoming: ActorRef) extends Actor {
             readBuffer ++= data
             splitReadBuffer
         case data:ByteString =>
-            writeBuffer += data
-            if(!waitingAck) {
-                socket ! Write(writeBuffer.head, Ack)
-                writeBuffer.trimStart(1)
+            if(waitingAck)
+                writeBuffer += data
+            else {
+                socket ! Write(data, Ack)
                 waitingAck = true
             }
         case Ack => {
