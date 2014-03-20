@@ -1,7 +1,7 @@
 
 import akka.actor.{ ActorSystem, Actor, ActorRef, Props }
 import akka.io.{ IO, Tcp }
-import akka.util.ByteString
+import akka.util.{ ByteString, ByteIterator }
 import java.net.InetSocketAddress
 import akka.event.Logging
 import scala.collection.mutable.Buffer
@@ -52,13 +52,62 @@ case class ParsedMessage(data:ByteString) {
         val OP_KILL_CURSORS = Value(2007)
     }
 
+    abstract sealed class Op {}
+/*
+struct OP_QUERY {
+    MsgHeader header;                 // standard message header
+    int32     flags;                  // bit vector of query options.  See below for details.
+    cstring   fullCollectionName ;    // "dbname.collectionname"
+    int32     numberToSkip;           // number of documents to skip
+    int32     numberToReturn;         // number of documents to return
+                                      //  in the first OP_REPLY batch
+    document  query;                  // query object.  See below for details.
+  [ document  returnFieldsSelector; ] // Optional. Selector indicating the fields
+                                      //  to return.  See below for details.
+}
+*/
+/*
+    def readCString(data:ByteString):String = {
+        val zero = data.indexOf(0)
+        if(zero == -1)
+            return new String(data, "UTF-8")
+        else
+            return new String(data, 0, zero, "UTF-8")
+    }
+*/
+
+    def readCString(iterator:ByteIterator):String = {
+        val cstring = iterator.clone.takeWhile( _ != 0).toArray
+        val result = new String(cstring, "UTF-8")
+        iterator.drop(cstring.length)
+        iterator.getByte // 0-terminated
+        result
+    }
+
+    case class OpQuery(flags:Int, fullCollectionName:String, numberToSkip:Int, numberToReturn:Int) extends Op
+    object OpQuery {
+        def apply(data:ByteString):OpQuery = {
+            val it = data.iterator
+            OpQuery(it.getInt,
+                    readCString(it),
+                    it.getInt,
+                    it.getInt)
+        }
+    }
+    case class OpUnknown extends Op {}
+
     case class Header(messageLength:Int, requestId:Int, responseTo:Int, opCode:OpCode.Value)
 
     lazy val header = {
         val it = data.iterator
         Header(it.getInt, it.getInt, it.getInt, OpCode(it.getInt))
     }
-    override def toString() = s"MESSAGE $header"
+
+    lazy val op = header.opCode match {
+        case OpCode.OP_QUERY => OpQuery(data.drop(16))
+        case _ => OpUnknown
+    }
+    override def toString() = s"$header: $op"
 }
 
 // this is the TCP server socket handler
