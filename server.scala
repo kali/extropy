@@ -107,11 +107,33 @@ struct OP_REPLY {
     document* documents;      // documents
 }
 */
-    case class OpReply( responseFlags:Int, cursorID:Long, startingFrom:Int, numberReturned:Int) extends Op
+    case class OpReply( responseFlags:Int, cursorID:Long, startingFrom:Int, numberReturned:Int,
+                        documents:Stream[BSONObject]) extends Op
     object OpReply {
         def parse(data:ByteString):OpReply = {
             val it = data.iterator
-            OpReply(it.getInt, it.getLong, it.getInt, it.getInt)
+            val (flags, cursorID, startingFrom, numberReturned)
+                = (it.getInt, it.getLong, it.getInt, it.getInt)
+            OpReply(flags, cursorID, startingFrom, numberReturned,
+                Stream.fill(numberReturned)( readBSONObject(it) )
+            )
+        }
+    }
+
+/*
+struct OP_GET_MORE {
+    MsgHeader header;             // standard message header
+    int32     ZERO;               // 0 - reserved for future use
+    cstring   fullCollectionName; // "dbname.collectionname"
+    int32     numberToReturn;     // number of documents to return
+    int64     cursorID;           // cursorID from the OP_REPLY
+}
+*/
+    case class OpGetMore(zero:Int, fullCollectionName:String, numberReturned:Int, cursorID:Long) extends Op
+    object OpGetMore {
+        def parse(data:ByteString):OpGetMore = {
+            val it = data.iterator
+            OpGetMore(it.getInt, readCString(it), it.getInt, it.getLong)
         }
     }
 
@@ -127,6 +149,7 @@ struct OP_REPLY {
     lazy val op = header.opCode match {
         case OpCode.OP_QUERY => OpQuery.parse(data.drop(16))
         case OpCode.OP_REPLY => OpReply.parse(data.drop(16))
+        case OpCode.OP_GET_MORE => OpGetMore.parse(data.drop(16))
         case _ => OpUnknown
     }
     override def toString() = s"$header: $op"
