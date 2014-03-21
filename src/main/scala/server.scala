@@ -102,10 +102,11 @@ class FrontendConnectionActor(socket:ActorRef, backend:InetSocketAddress) extend
 
 // this is the backend client
 object BackendConnectionActor {
-    def props(incoming:ActorRef, backend:InetSocketAddress) = Props(classOf[BackendConnectionActor], incoming, backend:InetSocketAddress)
+    def props(frontendPeer:ActorRef, backend:InetSocketAddress) =
+        Props(classOf[BackendConnectionActor], frontendPeer, backend)
 }
 
-class BackendConnectionActor(incoming: ActorRef, backend:InetSocketAddress) extends Actor {
+class BackendConnectionActor(frontendPeer: ActorRef, backend:InetSocketAddress) extends Actor {
 
     import Tcp._
     import context.system
@@ -124,21 +125,22 @@ class BackendConnectionActor(incoming: ActorRef, backend:InetSocketAddress) exte
 
     def receive = {
         case CommandFailed(_: Connect) =>
-              incoming ! "connect failed"
+              frontendPeer ! "connect failed"
               context stop self
         case c @ Connected(remote, local) =>
-            incoming ! c
+            frontendPeer ! c
             socket = sender()
             socket ! Register(self)
-            context become active
-    }
-
-    def active:Receive = {
+            if(!writeBuffer.isEmpty) {
+                socket ! Write(writeBuffer.head, Ack)
+                writeBuffer.trimStart(1)
+                waitingAck = true
+            }
         case Received(data) =>
             readBuffer ++= data
             splitReadBuffer
         case data:ByteString =>
-            if(waitingAck)
+            if(waitingAck || socket == null)
                 writeBuffer += data
             else {
                 socket ! Write(data, Ack)
@@ -163,7 +165,7 @@ class BackendConnectionActor(incoming: ActorRef, backend:InetSocketAddress) exte
         implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
         while(readBuffer.length > 4 && readBuffer.iterator.getInt <= readBuffer.length) {
             val data = readBuffer.take(readBuffer.iterator.getInt)
-            incoming ! data
+            frontendPeer ! data
             readBuffer = readBuffer.drop(data.length)
         }
     }
