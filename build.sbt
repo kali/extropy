@@ -8,9 +8,14 @@ resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/release
 
 libraryDependencies ++= Seq(
     "com.typesafe.akka" %% "akka-actor" % "2.3.0",
-    "org.mongodb" % "casbah-core_2.10" % "2.7.0-RC1",
+    "ch.qos.logback" % "logback-classic" % "1.0.13",
+    "org.mongodb" % "casbah-core_2.10" % "2.6.5",
     "org.scalatest" % "scalatest_2.10" % "2.1.0" % "test",
     "de.flapdoodle.embed" % "de.flapdoodle.embed.mongo" % "1.42" % "test"
 )
+
+fork in test := true
+
+parallelExecution in Test := false
 
 seq(Revolver.settings: _*)
