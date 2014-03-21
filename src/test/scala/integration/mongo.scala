@@ -8,13 +8,13 @@ import de.flapdoodle.embed.mongo.{ MongodExecutable, MongodProcess }
 import com.mongodb.casbah.Imports._
 import com.mongodb.casbah.commons.MongoDBObject
 
-trait MongodbTemporary extends BeforeAndAfterEach { this: Suite =>
+trait MongodbTemporary extends BeforeAndAfterAll { this: Suite =>
 
     var mongoExecutable:MongodExecutable = null
     var mongoProcess:MongodProcess = null
     var mongoBackendClient:MongoConnection = null
 
-    override def beforeEach() {
+    override def beforeAll() {
         import de.flapdoodle.embed.mongo.MongodStarter
         import de.flapdoodle.embed.process.runtime._
         import de.flapdoodle.embed.mongo.config._
@@ -30,16 +30,16 @@ trait MongodbTemporary extends BeforeAndAfterEach { this: Suite =>
         mongoBackendClient = MongoConnection("127.0.0.1", port);
     }
 
-    override def afterEach() {
+    override def afterAll() {
         if(mongoProcess != null) mongoProcess.stop
         if(mongoExecutable != null) mongoExecutable.stop
     }
 }
 
-class ProxySpec extends FlatSpec with MongodbTemporary with ShouldMatchers {
-    behavior of "An extropy proxy"
+class MongodbTemporarySpec extends FlatSpec with MongodbTemporary with ShouldMatchers {
+    behavior of "A temporary mongo"
 
-    "Mongo" should "be running" in {
+    it should "be running" in {
         mongoBackendClient("test")("col").save(MongoDBObject("a" -> 2))
         mongoBackendClient("test")("col").count() should be(1)
     }
