@@ -12,12 +12,16 @@ import org.bson.BSONObject
 object Boot {
     def main(args:Array[String]) {
         val system = ActorSystem("extropy-proxy")
-        val server = system.actorOf(Props[Server], "server")
+        val server = system.actorOf(ProxyServer.props(List(StringNormalizationInvariant("name", "normName"))), "proxyServer")
     }
 }
 
 // this is the TCP socket/dispatcher
-class Server extends Actor {
+object ProxyServer {
+    def props(invariants:Seq[Invariant]) = Props(classOf[ProxyServer], invariants)
+}
+
+class ProxyServer(val invariants:Seq[Invariant]) extends Actor {
 
     import Tcp._
     import context.system
