@@ -7,8 +7,10 @@ scalaVersion := "2.10.3"
 resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/"
 
 libraryDependencies ++= Seq(
-     "com.typesafe.akka" %% "akka-actor" % "2.3.0",
-     "org.mongodb" % "casbah-core_2.10" % "2.7.0-RC1"
+    "com.typesafe.akka" %% "akka-actor" % "2.3.0",
+    "org.mongodb" % "casbah-core_2.10" % "2.7.0-RC1",
+    "org.scalatest" % "scalatest_2.10" % "2.1.0" % "test",
+    "de.flapdoodle.embed" % "de.flapdoodle.embed.mongo" % "1.42" % "test"
 )
 
 seq(Revolver.settings: _*)
