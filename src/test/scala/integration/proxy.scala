@@ -26,7 +26,11 @@ Thread.sleep(100)
         mongoClient("test")("col").drop
         mongoClient("test")("col").save(MongoDBObject("a" -> 2))
         mongoClient("test")("col").count() should be(1)
+println("closing client")
         mongoClient.close
+
+Thread.sleep(1000)
+println("shutdown akka")
         system.shutdown
     }
 }
