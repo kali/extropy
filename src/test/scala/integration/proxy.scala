@@ -20,7 +20,7 @@ class ProxyServerSpec extends FlatSpec with MongodbTemporary with ShouldMatchers
             new InetSocketAddress("127.0.0.1", port),
             new InetSocketAddress("127.0.0.1", mongoBackendPort)
         ), "proxy")
-Thread.sleep(100)
+Thread.sleep(500)
 
         val mongoClient = MongoConnection("127.0.0.1", port)
         mongoClient("test")("col").drop
