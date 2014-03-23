@@ -14,11 +14,15 @@ abstract class SameDocumentInvariant[ID] extends Invariant {
 
     def fixOne(id:ID) {
         val obj:BSONObject = pullIdAndSource(id)
-        val value:Serializable = if(computeOneLocally != null) computeOneLocally(obj) else computeOneInMongo(id)
+        val value:Serializable = if(computeOneLocally != null)
+                computeOneLocally(obj)
+            else
+                computeOneInMongo(id)
     }
 }
 
-case class StringNormalizationInvariant[ID](val from:String, val to:String) extends SameDocumentInvariant[ID] {
+case class StringNormalizationInvariant[ID](val from:String, val to:String)
+        extends SameDocumentInvariant[ID] {
     def pullIdAndSource(id:ID):BSONObject = null
     def sourceFields = Seq(from)
     def targetField = to

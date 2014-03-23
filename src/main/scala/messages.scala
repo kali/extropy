@@ -29,6 +29,8 @@ object MessageParser {
         val it = data.iterator
         val header = MsgHeader(it.getInt, it.getInt, it.getInt, it.getInt)
         header.opCode match {
+            case    1 => OpReply.parse(header, it)
+            case 1000 => OpMsg.parse(header, it)
             case 2001 => OpUpdate.parse(header, it)
             case 2002 => OpInsert.parse(header, it)
             case 2003 => OpReserved(header)
@@ -36,8 +38,6 @@ object MessageParser {
             case 2005 => OpGetMore.parse(header, it)
             case 2006 => OpDelete.parse(header, it)
             case 2007 => OpKillCursors.parse(header, it)
-            case 1000 => OpMsg.parse(header, it)
-            case 1    => OpReply.parse(header, it)
         }
     }
 
@@ -68,7 +68,8 @@ object MessageParser {
         document* documents;          // one or more documents to insert into the collection
     }
     */
-    case class OpInsert(header:MsgHeader, flags:Int, fullCollectionName:String, documents:Stream[BSONObject]) extends Op
+    case class OpInsert(header:MsgHeader, flags:Int, fullCollectionName:String,
+                        documents:Stream[BSONObject]) extends Op
     object OpInsert {
         def parse(header:MsgHeader, it:ByteIterator):OpInsert = {
             OpInsert(header, it.getInt, readCString(it),

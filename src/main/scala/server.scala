@@ -1,6 +1,6 @@
 package org.zoy.kali.extropy
 
-import akka.actor.{ ActorSystem, Actor, ActorRef, Props }
+import akka.actor.{ ActorSystem, Actor, ActorRef, Props, Terminated }
 import akka.io.{ IO, Tcp }
 import akka.util.{ ByteString, ByteIterator }
 import java.net.InetSocketAddress
@@ -15,7 +15,7 @@ object Boot {
         val server = system.actorOf(
             ProxyServer.props(  List(StringNormalizationInvariant("name", "normName")),
                                 new InetSocketAddress("localhost", 27000),
-                                new InetSocketAddress("www.virtual.ftnz.net", 27017)
+                                new InetSocketAddress("localhost", 27017)
             ), "proxyServer")
     }
 }
@@ -26,7 +26,8 @@ object ProxyServer {
         Props(classOf[ProxyServer], invariants, bind, send)
 }
 
-class ProxyServer(val invariants:Seq[Invariant], val bind:InetSocketAddress, val send:InetSocketAddress) extends Actor {
+class ProxyServer(val invariants:Seq[Invariant], val bind:InetSocketAddress, val send:InetSocketAddress)
+        extends Actor {
 
     import Tcp._
     import context.system
@@ -43,78 +44,63 @@ class ProxyServer(val invariants:Seq[Invariant], val bind:InetSocketAddress, val
         case CommandFailed(_: Bind) => context stop self
 
         case c @ Connected(remote, local) =>
-            val socket = sender()
-            val handler = context.actorOf(FrontendConnectionActor.props(socket, send), "frontend-" + remote.getHostName +  ":" + remote.getPort)
-            socket ! Register(handler)
+            context.actorOf(ProxyPipe.props(sender, send),
+                                    "worker-" + remote.getHostName +  ":" + remote.getPort)
+
     }
 }
 
-// this is the TCP server socket handler
-object FrontendConnectionActor {
-    def props(socket:ActorRef, backend:InetSocketAddress) = Props(classOf[FrontendConnectionActor], socket, backend)
+object ProxyPipe {
+    def props(incomingFrontendConnection:ActorRef, backendAddress:InetSocketAddress) =
+        Props(classOf[ProxyPipe], incomingFrontendConnection, backendAddress)
 }
 
-class FrontendConnectionActor(socket:ActorRef, backend:InetSocketAddress) extends Actor {
+class ProxyPipe(socket:ActorRef, backendAddress:InetSocketAddress) extends Actor {
     import Tcp._
+    import context.system
+
     val log = Logging(context.system, this)
-    log.info(s"accepting connection")
+    val frontendHandler = context.actorOf(ConnectionActor.props(socket), "frontend")
+    val backendHandler = context.actorOf(ConnectionActor.props(backendAddress), "backend")
 
-    val client = context.actorOf(BackendConnectionActor.props(self, backend), "backend")
-
-    var incomingBuffer:ByteString = ByteString.empty
-
-    case object Ack extends Event
-    val writeBuffer:Buffer[ByteString] = Buffer()
-    var waitingAck:Boolean = false
+    context watch frontendHandler
+    context watch backendHandler
 
     def receive = {
-        case Received(data) =>
-            log.debug("> " + MessageParser.parse(data))
-            incomingBuffer ++= data
-            splitAndSend
-
-        case PeerClosed     => context stop self
-        case data:ByteString =>
-            log.debug("< " + MessageParser.parse(data))
-            if(!waitingAck) {
-                socket ! Write(data, Ack)
-                waitingAck = true
-            } else
-                writeBuffer += data
-        case Ack =>
-            if(writeBuffer.isEmpty)
-                waitingAck = false
-            else {
-                socket ! Write(writeBuffer.head, Ack)
-                writeBuffer.trimStart(1)
-            }
-    }
-
-    def splitAndSend = {
-        implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
-        while(incomingBuffer.length > 4 && incomingBuffer.iterator.getInt <= incomingBuffer.length) {
-            val data = incomingBuffer.take(incomingBuffer.iterator.getInt)
-            client ! data
-            incomingBuffer = incomingBuffer.drop(data.length)
-        }
+        case Terminated(_) => context stop self
+        case msg:ByteString if(sender == frontendHandler) => backendHandler ! msg
+        case msg:ByteString if(sender == backendHandler) => frontendHandler ! msg
+        case msg:ByteString =>
+            log.debug(s"unmatched $msg")
     }
 }
 
-// this is the backend client
-object BackendConnectionActor {
-    def props(frontendPeer:ActorRef, backend:InetSocketAddress) =
-        Props(classOf[BackendConnectionActor], frontendPeer, backend)
+// this is the client
+object ConnectionActor {
+    def props(connection:ActorRef) = Props(classOf[ConnectionActor], connection)
+    def props(backend:InetSocketAddress) = Props(classOf[ConnectionActor], backend)
 }
 
-class BackendConnectionActor(frontendPeer: ActorRef, backend:InetSocketAddress) extends Actor {
+class ConnectionActor extends Actor {
 
     import Tcp._
     import context.system
 
     val log = Logging(context.system, this)
-    log.info(s"opening connection")
 
-    IO(Tcp) ! Connect(backend)
+    def this(backend:InetSocketAddress) {
+        this()
+        log.debug(s"opening connection to $backend")
+        IO(Tcp) ! Connect(backend)
+    }
+
+    def this(s:ActorRef) {
+        this()
+        socket = s
+        log.debug(s"accepting connection $socket")
+        socket ! Register(self)
+        context watch socket
+    }
 
     var socket:ActorRef = null
     var readBuffer:ByteString = ByteString.empty
@@ -124,50 +110,43 @@ class BackendConnectionActor(frontendPeer: ActorRef, backend:InetSocketAddress) 
     case object Ack extends Event
 
     def receive = {
-        case CommandFailed(_: Connect) =>
-              frontendPeer ! "connect failed"
-              context stop self
-        case c @ Connected(remote, local) =>
-            frontendPeer ! c
-            socket = sender()
-            socket ! Register(self)
-            if(!writeBuffer.isEmpty) {
-                socket ! Write(writeBuffer.head, Ack)
-                writeBuffer.trimStart(1)
-                waitingAck = true
-            }
         case Received(data) =>
+log.debug(s"received $data")
             readBuffer ++= data
             splitReadBuffer
         case data:ByteString =>
-            if(waitingAck || socket == null)
-                writeBuffer += data
-            else {
-                socket ! Write(data, Ack)
-                waitingAck = true
-            }
-        case Ack => {
-            if(writeBuffer.isEmpty)
-                waitingAck = false
-            else {
-                socket ! Write(writeBuffer.head, Ack)
-                writeBuffer.trimStart(1)
-            }
+log.debug(s"about to send $data")
+            writeBuffer += data
+            writeSome
+        case Ack =>
+            waitingAck = false
+            writeSome
+        case CommandFailed =>
+              context stop self
+        case c @ Connected(remote, local) =>
+            socket = sender()
+            log.debug(s"connected to $socket")
+            socket ! Register(self)
+            context watch socket
+            writeSome
+        case t@Terminated(_) => context stop self
+    }
+
+    def writeSome {
+        if(!writeBuffer.isEmpty && socket != null && !waitingAck) {
+            socket ! Write(writeBuffer.head, Ack)
+            writeBuffer.trimStart(1)
+            waitingAck = true
         }
-        case CommandFailed(w: Write) => socket ! "write failed" // should not happen
-        case "close" => socket ! Close
-        case _: ConnectionClosed =>
-            socket ! "socket closed"
-            context stop self
     }
 
     def splitReadBuffer = {
         implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
         while(readBuffer.length > 4 && readBuffer.iterator.getInt <= readBuffer.length) {
             val data = readBuffer.take(readBuffer.iterator.getInt)
-            frontendPeer ! data
+log.debug(s"forward $data to ${context.parent}")
+            context.parent ! data
             readBuffer = readBuffer.drop(data.length)
         }
     }
 }
-

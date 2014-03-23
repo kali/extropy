@@ -31,7 +31,7 @@ Simple invariant lifecycle
 ScalarFieldSameDocument
 =======================
 
-GenericSameDocumentArray 
+GenericSameDocumentArray
 ========================
 - computeOneIsLocal = false
 - computeOne(id, optionalDoc)
@@ -60,3 +60,14 @@ SameDocumentSum < GenericSameDocumentArray
 ==========================================
 - override computeOneIsLocal = true
 - override computeOne: map( [project] ).count()
+
+Proxy workflow
+==============
+- ProxyServer class holds. root actor
+    - listening socket definition
+    - target socket definition
+    - invariant list
+- ProxyTCPManager actor: listens incoming TCP connection, and creates a ProxyPipeline for each incoming connection
+- ProxyPipeline creates FrontendConnectionActor and BackendConnectionActor
+
+
