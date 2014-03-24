@@ -23,7 +23,9 @@ object MessageParser {
     }
 
     case class MsgHeader(messageLength:Int, requestId:Int, responseTo:Int, opCode:Int)
-    abstract sealed class Op {}
+    abstract sealed class Op {
+        def toBinary = null
+    }
 
     def parse(data:ByteString):Op = {
         val it = data.iterator

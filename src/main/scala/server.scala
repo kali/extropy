@@ -62,16 +62,19 @@ class ProxyPipe(socket:ActorRef, backendAddress:InetSocketAddress) extends Actor
     val log = Logging(context.system, this)
     val frontendHandler = context.actorOf(ConnectionActor.props(socket), "frontend")
     val backendHandler = context.actorOf(ConnectionActor.props(backendAddress), "backend")
+    val proxy = context.actorOf(ExtropyProxy.props(List()), "proxy")
 
     context watch frontendHandler
     context watch backendHandler
 
     def receive = {
         case Terminated(_) => context stop self
-        case msg:ByteString if(sender == frontendHandler) => backendHandler ! msg
-        case msg:ByteString if(sender == backendHandler) => frontendHandler ! msg
-        case msg:ByteString =>
-            log.debug(s"unmatched $msg")
+        case msg:ByteString if(sender == frontendHandler) =>
+            proxy ! TargettedMessage(Server, IncomingMessage(msg))
+        case msg:ByteString if(sender == backendHandler) =>
+            proxy ! TargettedMessage(Client, IncomingMessage(msg))
+        case TargettedMessage(Client, msg) => frontendHandler ! msg.binary
+        case TargettedMessage(Server, msg) => backendHandler ! msg.binary
     }
 }
 
