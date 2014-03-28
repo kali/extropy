@@ -70,9 +70,9 @@ class ProxyPipe(socket:ActorRef, backendAddress:InetSocketAddress) extends Actor
     def receive = {
         case Terminated(_) => context stop self
         case msg:ByteString if(sender == frontendHandler) =>
-            proxy ! TargettedMessage(Server, IncomingMessage(msg))
+            proxy ! TargettedMessage(Server, mongo.IncomingMessage(msg))
         case msg:ByteString if(sender == backendHandler) =>
-            proxy ! TargettedMessage(Client, IncomingMessage(msg))
+            proxy ! TargettedMessage(Client, mongo.IncomingMessage(msg))
         case TargettedMessage(Client, msg) => frontendHandler ! msg.binary
         case TargettedMessage(Server, msg) => backendHandler ! msg.binary
     }
