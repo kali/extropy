@@ -1,6 +1,6 @@
 package org.zoy.kali.extropy
 
-import akka.util.{ ByteString, ByteIterator }
+import akka.util.{ ByteString, ByteStringBuilder, ByteIterator }
 import org.bson.BSONObject
 
 object MessageParser {
@@ -22,14 +22,21 @@ object MessageParser {
         result
     }
 
-    case class MsgHeader(messageLength:Int, requestId:Int, responseTo:Int, opCode:Int)
+    case class MsgHeader(messageLength:Int, requestId:Int, responseTo:Int, opCode:Int) {
+        def toBinary:ByteString =
+            new ByteStringBuilder() .putInt(messageLength).putInt(requestId)
+                                    .putInt(responseTo).putInt(opCode).result
+    }
+    object MsgHeader {
+        def parse(it:ByteIterator) = MsgHeader(it.getInt, it.getInt, it.getInt, it.getInt)
+    }
     abstract sealed class Op {
         def toBinary = null
     }
 
     def parse(data:ByteString):Op = {
         val it = data.iterator
-        val header = MsgHeader(it.getInt, it.getInt, it.getInt, it.getInt)
+        val header = MsgHeader.parse(it)
         header.opCode match {
             case    1 => OpReply.parse(header, it)
             case 1000 => OpMsg.parse(header, it)

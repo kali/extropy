@@ -2,7 +2,9 @@ package org.zoy.kali.extropy
 
 import org.bson.{ BSONObject }
 
-abstract class Invariant { }
+abstract class Invariant {
+    def preprocess(msg:TargettedMessage) {}
+}
 
 abstract class SameDocumentInvariant[ID] extends Invariant {
     val computeOneInMongo:(ID=>Serializable) = null
