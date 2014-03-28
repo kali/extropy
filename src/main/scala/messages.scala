@@ -15,6 +15,7 @@ object MessageParser {
     }
 
     val bsonDecoder = new org.bson.LazyBSONDecoder
+    val bsonEncoder = new org.bson.BasicBSONEncoder
     def readBSONObject(iterator:ByteIterator):BSONObject = {
         val size = iterator.clone.getInt
         val result = bsonDecoder.readObject(iterator.clone.take(size).toArray)
@@ -31,7 +32,7 @@ object MessageParser {
         def parse(it:ByteIterator) = MsgHeader(it.getInt, it.getInt, it.getInt, it.getInt)
     }
     abstract sealed class Op {
-        def toBinary = null
+        def toBinary:ByteString
     }
 
     def parse(data:ByteString):Op = {
@@ -61,7 +62,16 @@ object MessageParser {
     }
     */
     case class OpUpdate( header:MsgHeader, zero:Int, fullCollectionName:String, flags:Int,
-                         selector:BSONObject, update:BSONObject) extends Op
+                         selector:BSONObject, update:BSONObject) extends Op {
+        def toBinary:ByteString =
+            new ByteStringBuilder() .append(header.toBinary)
+                                    .putInt(zero)
+                                    .putBytes(fullCollectionName.getBytes("UTF-8")).putByte(0)
+                                    .putInt(flags)
+                                    .putBytes(bsonEncoder.encode(selector))
+                                    .putBytes(bsonEncoder.encode(update))
+                                    .result
+    }
     object OpUpdate {
         def parse(header:MsgHeader, it:ByteIterator):OpUpdate = {
             OpUpdate(header, it.getInt, readCString(it), it.getInt,
@@ -78,7 +88,16 @@ object MessageParser {
     }
     */
     case class OpInsert(header:MsgHeader, flags:Int, fullCollectionName:String,
-                        documents:Stream[BSONObject]) extends Op
+                        documents:Stream[BSONObject]) extends Op {
+        def toBinary:ByteString = {
+            val bsb = new ByteStringBuilder()
+                                    .append(header.toBinary)
+                                    .putInt(flags)
+                                    .putBytes(fullCollectionName.getBytes("UTF-8")).putByte(0)
+            documents.foreach( doc => bsb.putBytes(bsonEncoder.encode(doc)) )
+            bsb.result
+        }
+    }
     object OpInsert {
         def parse(header:MsgHeader, it:ByteIterator):OpInsert = {
             OpInsert(header, it.getInt, readCString(it),
@@ -103,7 +122,19 @@ object MessageParser {
     }
     */
     case class OpQuery( header:MsgHeader, flags:Int, fullCollectionName:String, numberToSkip:Int, numberToReturn:Int,
-                        query:BSONObject, returnFieldsSelector:Option[BSONObject]) extends Op
+                        query:BSONObject, returnFieldsSelector:Option[BSONObject]) extends Op {
+        def toBinary:ByteString = {
+            val bsb = new ByteStringBuilder()
+                                    .append(header.toBinary)
+                                    .putInt(flags)
+                                    .putBytes(fullCollectionName.getBytes("UTF-8")).putByte(0)
+                                    .putInt(numberToSkip)
+                                    .putInt(numberToReturn)
+                                    .putBytes(bsonEncoder.encode(query))
+            returnFieldsSelector.foreach( sel => bsb.putBytes(bsonEncoder.encode(sel)) )
+            bsb.result
+        }
+    }
     object OpQuery {
         def parse(header:MsgHeader, it:ByteIterator):OpQuery = {
             OpQuery(header, it.getInt,
@@ -123,7 +154,18 @@ object MessageParser {
         int64     cursorID;           // cursorID from the OP_REPLY
     }
     */
-    case class OpGetMore(header:MsgHeader, zero:Int, fullCollectionName:String, numberReturned:Int, cursorID:Long) extends Op
+    case class OpGetMore(   header:MsgHeader, zero:Int, fullCollectionName:String,
+                            numberReturned:Int, cursorID:Long) extends Op {
+        def toBinary:ByteString = {
+            new ByteStringBuilder()
+                                    .append(header.toBinary)
+                                    .putInt(zero)
+                                    .putBytes(fullCollectionName.getBytes("UTF-8")).putByte(0)
+                                    .putInt(numberReturned)
+                                    .putLong(cursorID)
+                                    .result
+        }
+    }
     object OpGetMore {
         def parse(header:MsgHeader, it:ByteIterator):OpGetMore = {
             OpGetMore(header, it.getInt, readCString(it), it.getInt, it.getLong)
@@ -139,7 +181,17 @@ object MessageParser {
         document  selector;           // query object.  See below for details.
     }
     */
-    case class OpDelete(header:MsgHeader, zero:Int, fullCollectionName:String, flags:Int, selector:BSONObject) extends Op
+    case class OpDelete(header:MsgHeader, zero:Int, fullCollectionName:String, flags:Int, selector:BSONObject) extends Op {
+        def toBinary:ByteString = {
+            new ByteStringBuilder()
+                                    .append(header.toBinary)
+                                    .putInt(zero)
+                                    .putBytes(fullCollectionName.getBytes("UTF-8")).putByte(0)
+                                    .putInt(flags)
+                                    .putBytes(bsonEncoder.encode(selector))
+                                    .result
+        }
+    }
     object OpDelete {
         def parse(header:MsgHeader, it:ByteIterator):OpDelete = {
             OpDelete(header, it.getInt, readCString(it), it.getInt, readBSONObject(it))
@@ -154,7 +206,16 @@ object MessageParser {
         int64*    cursorIDs;         // sequence of cursorIDs to close
     }
     */
-    case class OpKillCursors(header:MsgHeader, zero:Int, numberOfCursorIDs:Int, cursorIDs:Stream[Long]) extends Op
+    case class OpKillCursors(header:MsgHeader, zero:Int, numberOfCursorIDs:Int, cursorIDs:Stream[Long]) extends Op {
+        def toBinary:ByteString = {
+            val bsb = new ByteStringBuilder()
+                                    .append(header.toBinary)
+                                    .putInt(zero)
+                                    .putInt(numberOfCursorIDs)
+            cursorIDs.foreach( c => bsb.putLong(c) )
+            bsb.result
+        }
+    }
     object OpKillCursors {
         def parse(header:MsgHeader, it:ByteIterator):OpKillCursors = {
             val (zero, numberOfCursorIDs) = (it.getInt, it.getInt)
@@ -167,7 +228,14 @@ object MessageParser {
         cstring   message; // message for the database
     }
     */
-    case class OpMsg(header:MsgHeader, message:String) extends Op
+    case class OpMsg(header:MsgHeader, message:String) extends Op {
+        def toBinary:ByteString = {
+            new ByteStringBuilder()
+                                    .append(header.toBinary)
+                                    .putBytes(message.getBytes("UTF-8")).putByte(0)
+                                    .result
+        }
+    }
     object OpMsg {
         def parse(header:MsgHeader, it:ByteIterator):OpMsg = OpMsg(header, readCString(it))
     }
@@ -183,7 +251,18 @@ object MessageParser {
     }
     */
     case class OpReply( header:MsgHeader, responseFlags:Int, cursorID:Long, startingFrom:Int, numberReturned:Int,
-                        documents:Stream[BSONObject]) extends Op
+                        documents:Stream[BSONObject]) extends Op {
+        def toBinary:ByteString = {
+            val bsb = new ByteStringBuilder()
+                                    .append(header.toBinary)
+                                    .putInt(responseFlags)
+                                    .putLong(cursorID)
+                                    .putInt(startingFrom)
+                                    .putInt(numberReturned)
+            documents.foreach( doc => bsb.putBytes(bsonEncoder.encode(doc)) )
+            bsb.result
+        }
+    }
     object OpReply {
         def parse(header:MsgHeader, it:ByteIterator):OpReply = {
             val (flags, cursorID, startingFrom, numberReturned)
@@ -195,7 +274,9 @@ object MessageParser {
     }
 
     /* OP_RESERVED */
-    case class OpReserved(header:MsgHeader) extends Op
+    case class OpReserved(header:MsgHeader) extends Op {
+        def toBinary:ByteString = header.toBinary
+    }
 }
 
 

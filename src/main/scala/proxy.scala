@@ -16,7 +16,7 @@ case class IncomingMessage(val binary:ByteString) extends Message {
     lazy val op = MessageParser.parse(binary)
 }
 
-case class GeneratedMessage(val op:MessageParser.Op) extends Message {
+case class CraftedMessage(val op:MessageParser.Op) extends Message {
     lazy val binary = op.toBinary
 }
 
