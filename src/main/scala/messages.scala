@@ -29,10 +29,12 @@ sealed abstract class Message {
     def binary:ByteString
     def header:MsgHeader
     def op:Op
+    def isWriteOp:Boolean
 }
 
 case class IncomingMessage(val binary:ByteString) extends Message {
-    lazy val header = MsgHeader.parse(binary.iterator)
+    val header = MsgHeader.parse(binary.iterator)
+    val isWriteOp = List(2001,2002,2006).contains(header.opCode)
     lazy val op = header.opCode match {
         case    1 => OpReply.parse(binary.iterator.drop(16))
         case 1000 => OpMsg.parse(binary.iterator.drop(16))
@@ -49,6 +51,7 @@ case class IncomingMessage(val binary:ByteString) extends Message {
 case class CraftedMessage(requestId:Int, responseTo:Int, op:Op) extends Message {
     lazy val header = MsgHeader(16 + op.binary.size, requestId, responseTo, op.opcode)
     lazy val binary = header.binary ++ op.binary
+    val isWriteOp = op.isWriteOp
 }
 
 case class MsgHeader(messageLength:Int, requestId:Int, responseTo:Int, opCode:Int) {
@@ -62,6 +65,7 @@ object MsgHeader {
 abstract sealed class Op {
     def binary:ByteString
     def opcode:Int
+    def isWriteOp = List(2001, 2002, 2006).contains(opcode)
 }
 /*
 def parse(data:ByteString):IncomingMessage = {

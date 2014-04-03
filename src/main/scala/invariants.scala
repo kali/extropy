@@ -1,9 +1,11 @@
 package org.zoy.kali.extropy
 
+import mongo._
+
 import org.bson.{ BSONObject }
 
 abstract class Invariant {
-    def preprocess(msg:TargettedMessage) {}
+    def alterWrite(msg:Message):Message = msg
 }
 
 abstract class SameDocumentInvariant[ID] extends Invariant {

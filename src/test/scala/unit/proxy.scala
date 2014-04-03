@@ -19,6 +19,7 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
     behavior of "An extropy proxy"
 
     it should "transform messages" in {
+        pending
         val proxy = system.actorOf(ExtropyProxy.props(List(StringNormalizationInvariant("name", "normName"))))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpInsert(0, "some.collection", Stream(MongoDBObject("name" -> "Kali"))))
@@ -28,7 +29,7 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
         val op:OpInsert = transformed.message.op.asInstanceOf[OpInsert]
         op.fullCollectionName should be("some.collection")
         op.documents.size should be(1)
-        op.documents.head should be(MongoDBObject("name" -> "Kali"))
+        op.documents.head should be(MongoDBObject("name" -> "Kali", "normName" -> "kali"))
     }
 
      override def afterAll { TestKit.shutdownActorSystem(system) }
