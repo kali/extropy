@@ -29,12 +29,11 @@ sealed abstract class Message {
     def binary:ByteString
     def header:MsgHeader
     def op:Op
-    def isWriteOp:Boolean
+    def isWriteOp:Boolean = op.asWriteOp != null
 }
 
 case class IncomingMessage(val binary:ByteString) extends Message {
     val header = MsgHeader.parse(binary.iterator)
-    val isWriteOp = List(2001,2002,2006).contains(header.opCode)
     lazy val op = header.opCode match {
         case    1 => OpReply.parse(binary.iterator.drop(16))
         case 1000 => OpMsg.parse(binary.iterator.drop(16))
@@ -51,7 +50,6 @@ case class IncomingMessage(val binary:ByteString) extends Message {
 case class CraftedMessage(requestId:Int, responseTo:Int, op:Op) extends Message {
     lazy val header = MsgHeader(16 + op.binary.size, requestId, responseTo, op.opcode)
     lazy val binary = header.binary ++ op.binary
-    val isWriteOp = op.isWriteOp
 }
 
 case class MsgHeader(messageLength:Int, requestId:Int, responseTo:Int, opCode:Int) {
@@ -62,28 +60,18 @@ case class MsgHeader(messageLength:Int, requestId:Int, responseTo:Int, opCode:In
 object MsgHeader {
     def parse(it:ByteIterator) = MsgHeader(it.getInt, it.getInt, it.getInt, it.getInt)
 }
+
 abstract sealed class Op {
     def binary:ByteString
     def opcode:Int
-    def isWriteOp = List(2001, 2002, 2006).contains(opcode)
+    def asWriteOp:WriteOp
 }
-/*
-def parse(data:ByteString):IncomingMessage = {
-    val it = data.iterator
-    val header = MsgHeader.parse(it)
-    IncomingMessage(header, header.opCode match {
-        case    1 => OpReply.parse(it)
-        case 1000 => OpMsg.parse(it)
-        case 2001 => OpUpdate.parse(it)
-        case 2002 => OpInsert.parse(it)
-        case 2003 => OpReserved()
-        case 2004 => OpQuery.parse(it)
-        case 2005 => OpGetMore.parse(it)
-        case 2006 => OpDelete.parse(it)
-        case 2007 => OpKillCursors.parse(it)
-    })
+
+sealed trait WriteOp extends Op {
+    def asWriteOp:WriteOp = this
+    def writtenCollection:String
 }
-*/
+
 /*
 struct OP_UPDATE {
     MsgHeader header;             // standard message header
@@ -95,7 +83,7 @@ struct OP_UPDATE {
 }
 */
 case class OpUpdate( zero:Int, fullCollectionName:String, flags:Int,
-                     selector:BSONObject, update:BSONObject) extends Op {
+                     selector:BSONObject, update:BSONObject) extends Op with WriteOp {
     def opcode = 2001
     def binary:ByteString =
         new ByteStringBuilder()
@@ -105,6 +93,7 @@ case class OpUpdate( zero:Int, fullCollectionName:String, flags:Int,
                                 .putBytes(bsonEncoder.encode(selector))
                                 .putBytes(bsonEncoder.encode(update))
                                 .result
+    def writtenCollection = fullCollectionName
 }
 object OpUpdate {
     def parse(it:ByteIterator):OpUpdate = {
@@ -122,7 +111,7 @@ struct OP_INSERT {
 }
 */
 case class OpInsert(flags:Int, fullCollectionName:String,
-                    documents:Stream[BSONObject]) extends Op {
+                    documents:Stream[BSONObject]) extends Op with WriteOp {
     def opcode = 2002
     def binary:ByteString = {
         val bsb = new ByteStringBuilder()
@@ -131,6 +120,7 @@ case class OpInsert(flags:Int, fullCollectionName:String,
         documents.foreach( doc => bsb.putBytes(bsonEncoder.encode(doc)) )
         bsb.result
     }
+    def writtenCollection = fullCollectionName
 }
 object OpInsert {
     def parse(it:ByteIterator):OpInsert = {
@@ -168,6 +158,7 @@ case class OpQuery( flags:Int, fullCollectionName:String, numberToSkip:Int, numb
         returnFieldsSelector.foreach( sel => bsb.putBytes(bsonEncoder.encode(sel)) )
         bsb.result
     }
+    def asWriteOp = null // FIXME: findAndModify
 }
 object OpQuery {
     def parse(it:ByteIterator):OpQuery = {
@@ -199,6 +190,7 @@ case class OpGetMore(   zero:Int, fullCollectionName:String,
                                 .putLong(cursorID)
                                 .result
     }
+    def asWriteOp = null
 }
 object OpGetMore {
     def parse(it:ByteIterator):OpGetMore = {
@@ -215,7 +207,7 @@ struct OP_DELETE {
     document  selector;           // query object.  See below for details.
 }
 */
-case class OpDelete(zero:Int, fullCollectionName:String, flags:Int, selector:BSONObject) extends Op {
+case class OpDelete(zero:Int, fullCollectionName:String, flags:Int, selector:BSONObject) extends Op with WriteOp {
     def opcode = 2006
     def binary:ByteString = {
         new ByteStringBuilder()
@@ -225,6 +217,7 @@ case class OpDelete(zero:Int, fullCollectionName:String, flags:Int, selector:BSO
                                 .putBytes(bsonEncoder.encode(selector))
                                 .result
     }
+    def writtenCollection = fullCollectionName
 }
 object OpDelete {
     def parse(it:ByteIterator):OpDelete = {
@@ -249,6 +242,7 @@ case class OpKillCursors(zero:Int, numberOfCursorIDs:Int, cursorIDs:Stream[Long]
         cursorIDs.foreach( c => bsb.putLong(c) )
         bsb.result
     }
+    def asWriteOp = null
 }
 object OpKillCursors {
     def parse(it:ByteIterator):OpKillCursors = {
@@ -269,6 +263,7 @@ case class OpMsg(message:String) extends Op {
                                 .putBytes(message.getBytes("UTF-8")).putByte(0)
                                 .result
     }
+    def asWriteOp = null
 }
 object OpMsg {
     def parse(it:ByteIterator):OpMsg = OpMsg(readCString(it))
@@ -296,6 +291,7 @@ case class OpReply( responseFlags:Int, cursorID:Long, startingFrom:Int, numberRe
         documents.foreach( doc => bsb.putBytes(bsonEncoder.encode(doc)) )
         bsb.result
     }
+    def asWriteOp = null
 }
 object OpReply {
     def parse(it:ByteIterator):OpReply = {
@@ -311,4 +307,5 @@ object OpReply {
 case class OpReserved() extends Op {
     def opcode = 2003
     def binary:ByteString = ByteString.empty
+    def asWriteOp = null
 }

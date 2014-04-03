@@ -13,9 +13,9 @@ object Boot {
     def main(args:Array[String]) {
         val system = ActorSystem("extropy-proxy")
         val server = system.actorOf(
-            ProxyServer.props(  List(StringNormalizationInvariant("name", "normName")),
+            ProxyServer.props(  List(StringNormalizationInvariant("test.users", "name", "normName")),
                                 new InetSocketAddress("localhost", 27000),
-                                new InetSocketAddress("localhost", 27017)
+                                new InetSocketAddress("infrabox", 27017)
             ), "proxyServer")
     }
 }

@@ -3,7 +3,7 @@ Invariants
 ==========
 - same document
     - created_at, updated_at
-    - scalar fields: "normalize" strings for search
+    - scalar fields: ex. "normalize" strings for search
     - array
         - count of elements in an array
         - count of filtered elements from an array

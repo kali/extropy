@@ -18,16 +18,35 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
 
     behavior of "An extropy proxy"
 
-    it should "transform messages" in {
-        pending
-        val proxy = system.actorOf(ExtropyProxy.props(List(StringNormalizationInvariant("name", "normName"))))
+    it should "leave read messages alone" in {
+        val proxy = system.actorOf(ExtropyProxy.props(List(StringNormalizationInvariant("test.users", "name", "normName"))))
+        val original = TargettedMessage(Server,
+                    CraftedMessage(0, 0, OpQuery(0, "test.users", 12, 12, MongoDBObject("name" -> "Kali"), None))
+                )
+        proxy ! original
+        val transformed = expectMsgClass(classOf[TargettedMessage])
+        transformed should be(original)
+    }
+
+    it should "leave messages on an arbitrary collection alone" in {
+        val proxy = system.actorOf(ExtropyProxy.props(List(StringNormalizationInvariant("test.users", "name", "normName"))))
+        val original = TargettedMessage(Server,
+                    CraftedMessage(0, 0, OpInsert(0, "test.not-users", Stream(MongoDBObject("name" -> "Kali"))))
+                )
+        proxy ! original
+        val transformed = expectMsgClass(classOf[TargettedMessage])
+        transformed should be(original)
+    }
+
+    it should "transform messages on the right collection" in {
+        val proxy = system.actorOf(ExtropyProxy.props(List(StringNormalizationInvariant("test.users", "name", "normName"))))
         proxy ! TargettedMessage(Server,
-                    CraftedMessage(0, 0, OpInsert(0, "some.collection", Stream(MongoDBObject("name" -> "Kali"))))
+                    CraftedMessage(0, 0, OpInsert(0, "test.users", Stream(MongoDBObject("name" -> "Kali"))))
                 )
         val transformed = expectMsgClass(classOf[TargettedMessage])
         transformed.direction should be(Server)
         val op:OpInsert = transformed.message.op.asInstanceOf[OpInsert]
-        op.fullCollectionName should be("some.collection")
+        op.fullCollectionName should be("test.users")
         op.documents.size should be(1)
         op.documents.head should be(MongoDBObject("name" -> "Kali", "normName" -> "kali"))
     }
