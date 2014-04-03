@@ -185,13 +185,13 @@ struct OP_GET_MORE {
 }
 */
 case class OpGetMore(   zero:Int, fullCollectionName:String,
-                        numberReturned:Int, cursorID:Long) extends Op {
+                        numberToReturn:Int, cursorID:Long) extends Op {
     def opcode = 2005
     def binary:ByteString = {
         new ByteStringBuilder()
                                 .putInt(zero)
                                 .putBytes(fullCollectionName.getBytes("UTF-8")).putByte(0)
-                                .putInt(numberReturned)
+                                .putInt(numberToReturn)
                                 .putLong(cursorID)
                                 .result
     }
