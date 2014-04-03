@@ -15,10 +15,10 @@ object ExtropyProxy {
 
 class ExtropyProxy(val invariants:List[Invariant]) extends Actor {
     def receive = {
-        case msg@TargettedMessage(Client,_) => context.parent ! msg
+        case msg@TargettedMessage(Client,_) => sender ! msg
         case msg@TargettedMessage(Server,_) => {
             invariants.foreach( _.preprocess(msg) )
-            context.parent ! msg
+            sender ! msg
         }
     }
 }
