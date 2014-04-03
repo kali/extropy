@@ -5,7 +5,7 @@ import org.scalatest.matchers.ShouldMatchers
 
 import com.mongodb.casbah.Imports._
 
-class MongoSpec extends FlatSpec with ShouldMatchers {
+class MessageParserSpec extends FlatSpec with ShouldMatchers {
     implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
     behavior of "Mongo message codec"
 
