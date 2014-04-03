@@ -2,6 +2,7 @@ package org.zoy.kali.extropy.mongo
 
 import akka.util.{ ByteString, ByteStringBuilder, ByteIterator }
 import org.bson.BSONObject
+import com.mongodb.casbah.Imports._
 
 object MessageParser {
     implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
@@ -29,7 +30,8 @@ sealed abstract class Message {
     def binary:ByteString
     def header:MsgHeader
     def op:Op
-    def isWriteOp:Boolean = op.asWriteOp != null
+
+    def isChange:Boolean = op.asChange != null
 }
 
 case class IncomingMessage(val binary:ByteString) extends Message {
@@ -64,12 +66,8 @@ object MsgHeader {
 abstract sealed class Op {
     def binary:ByteString
     def opcode:Int
-    def asWriteOp:WriteOp
-}
-
-sealed trait WriteOp extends Op {
-    def asWriteOp:WriteOp = this
-    def writtenCollection:String
+    def asChange:Change
+    def adoptChange(change:Change):Op = throw new NotImplementedError(s"Attempting to adopt $change in $this")
 }
 
 /*
@@ -83,7 +81,7 @@ struct OP_UPDATE {
 }
 */
 case class OpUpdate( zero:Int, fullCollectionName:String, flags:Int,
-                     selector:BSONObject, update:BSONObject) extends Op with WriteOp {
+                     selector:BSONObject, update:BSONObject) extends Op {
     def opcode = 2001
     def binary:ByteString =
         new ByteStringBuilder()
@@ -93,8 +91,18 @@ case class OpUpdate( zero:Int, fullCollectionName:String, flags:Int,
                                 .putBytes(bsonEncoder.encode(selector))
                                 .putBytes(bsonEncoder.encode(update))
                                 .result
-    def writtenCollection = fullCollectionName
+    def asChange = if(new MongoDBObject(update.asInstanceOf[DBObject]).keys.exists( _.startsWith("$")))
+        ModifiersUpdateChange(fullCollectionName, selector, update)
+    else
+        FullBodyUpdateChange(fullCollectionName, selector, update)
+
+    override def adoptChange(change:Change) = change match {
+        case fbu:FullBodyUpdateChange => copy(update=fbu.update)
+        case mod:ModifiersUpdateChange => copy(update=mod.update)
+        case _ => super.adoptChange(change)
+    }
 }
+
 object OpUpdate {
     def parse(it:ByteIterator):OpUpdate = {
         OpUpdate(it.getInt, readCString(it), it.getInt,
@@ -111,7 +119,7 @@ struct OP_INSERT {
 }
 */
 case class OpInsert(flags:Int, fullCollectionName:String,
-                    documents:Stream[BSONObject]) extends Op with WriteOp {
+                    documents:Stream[BSONObject]) extends Op {
     def opcode = 2002
     def binary:ByteString = {
         val bsb = new ByteStringBuilder()
@@ -121,7 +129,14 @@ case class OpInsert(flags:Int, fullCollectionName:String,
         bsb.result
     }
     def writtenCollection = fullCollectionName
+
+    def asChange = InsertChange(fullCollectionName, documents)
+    override def adoptChange(change:Change) = change match {
+        case other:InsertChange => copy(documents=other.documents)
+        case _ => super.adoptChange(change)
+    }
 }
+
 object OpInsert {
     def parse(it:ByteIterator):OpInsert = {
         OpInsert(it.getInt, readCString(it),
@@ -158,7 +173,7 @@ case class OpQuery( flags:Int, fullCollectionName:String, numberToSkip:Int, numb
         returnFieldsSelector.foreach( sel => bsb.putBytes(bsonEncoder.encode(sel)) )
         bsb.result
     }
-    def asWriteOp = null // FIXME: findAndModify
+    def asChange = null // FIXME: findAndModify
 }
 object OpQuery {
     def parse(it:ByteIterator):OpQuery = {
@@ -190,7 +205,7 @@ case class OpGetMore(   zero:Int, fullCollectionName:String,
                                 .putLong(cursorID)
                                 .result
     }
-    def asWriteOp = null
+    def asChange = null
 }
 object OpGetMore {
     def parse(it:ByteIterator):OpGetMore = {
@@ -207,7 +222,7 @@ struct OP_DELETE {
     document  selector;           // query object.  See below for details.
 }
 */
-case class OpDelete(zero:Int, fullCollectionName:String, flags:Int, selector:BSONObject) extends Op with WriteOp {
+case class OpDelete(zero:Int, fullCollectionName:String, flags:Int, selector:BSONObject) extends Op {
     def opcode = 2006
     def binary:ByteString = {
         new ByteStringBuilder()
@@ -218,6 +233,7 @@ case class OpDelete(zero:Int, fullCollectionName:String, flags:Int, selector:BSO
                                 .result
     }
     def writtenCollection = fullCollectionName
+    def asChange = null
 }
 object OpDelete {
     def parse(it:ByteIterator):OpDelete = {
@@ -242,7 +258,7 @@ case class OpKillCursors(zero:Int, numberOfCursorIDs:Int, cursorIDs:Stream[Long]
         cursorIDs.foreach( c => bsb.putLong(c) )
         bsb.result
     }
-    def asWriteOp = null
+    def asChange = null
 }
 object OpKillCursors {
     def parse(it:ByteIterator):OpKillCursors = {
@@ -263,7 +279,7 @@ case class OpMsg(message:String) extends Op {
                                 .putBytes(message.getBytes("UTF-8")).putByte(0)
                                 .result
     }
-    def asWriteOp = null
+    def asChange = null
 }
 object OpMsg {
     def parse(it:ByteIterator):OpMsg = OpMsg(readCString(it))
@@ -291,7 +307,7 @@ case class OpReply( responseFlags:Int, cursorID:Long, startingFrom:Int, numberRe
         documents.foreach( doc => bsb.putBytes(bsonEncoder.encode(doc)) )
         bsb.result
     }
-    def asWriteOp = null
+    def asChange = null
 }
 object OpReply {
     def parse(it:ByteIterator):OpReply = {
@@ -307,5 +323,16 @@ object OpReply {
 case class OpReserved() extends Op {
     def opcode = 2003
     def binary:ByteString = ByteString.empty
-    def asWriteOp = null
+    def asChange = null
 }
+
+// High level, semantic, representations for actual data modifications
+
+abstract sealed class Change {
+    def writtenCollection:String
+}
+
+case class FullBodyUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change
+case class ModifiersUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change
+case class InsertChange(writtenCollection:String, documents:Stream[BSONObject]) extends Change
+
