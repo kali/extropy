@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+cd `dirname $0`/..
+if [ "$1" == "" ]
+then
+    ./sbt -shell "project core" shell
+else
+    ./sbt "project core" "$@"
+fi
