@@ -233,7 +233,11 @@ case class OpDelete(zero:Int, fullCollectionName:String, flags:Int, selector:BSO
                                 .result
     }
     def writtenCollection = fullCollectionName
-    def asChange = null
+    def asChange = DeleteChange(fullCollectionName, selector)
+    override def adoptChange(change:Change) = change match {
+        case del:DeleteChange => copy(selector=del.selector)
+        case _ => super.adoptChange(change)
+    }
 }
 object OpDelete {
     def parse(it:ByteIterator):OpDelete = {
@@ -335,4 +339,5 @@ abstract sealed class Change {
 case class FullBodyUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change
 case class ModifiersUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change
 case class InsertChange(writtenCollection:String, documents:Stream[BSONObject]) extends Change
+case class DeleteChange(writtenCollection:String, selector:BSONObject) extends Change
 

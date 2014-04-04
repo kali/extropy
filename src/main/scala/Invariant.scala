@@ -35,6 +35,8 @@ abstract class SameDocumentInvariant[ID](collection:String) extends Invariant {
         case fbu:FullBodyUpdateChange => fbu.copy(
             update=fbu.update.asInstanceOf[DBObject] ++ (targetField -> computeOneLocally(fbu.update))
         )
+        case delete:DeleteChange => delete
+        case _ => throw new NotImplementedError
     }
 }
 
