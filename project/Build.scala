@@ -21,8 +21,8 @@ object ExtropyBuildSettings {
 object ExtropyRootBuild extends Build {
     import ExtropyBuildSettings.buildSettings
 
-    lazy val core = project in file("extropy-core")
-    lazy val proxy = project in file("extropy-proxy") dependsOn(core)
+    lazy val core = project in file("core")
+    lazy val proxy = project in file("proxy") dependsOn(core)
 
     lazy val root = project in file(".") aggregate(core, proxy)
 }
