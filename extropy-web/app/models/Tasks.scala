@@ -1,43 +1,16 @@
 package models
 
-import anorm._
-import anorm.SqlParser._
-
-import play.api.db._
 import play.api.Play.current
+import java.util.Date
+import com.novus.salat._
+import com.novus.salat.annotations._
+import com.novus.salat.dao._
+import com.mongodb.casbah.Imports._
+import se.radley.plugin.salat._
+import salatContext._
 
-case class Task(id: Long, label: String)
+case class Task(id:ObjectId, label:String)
 
-
-
-object Task {
-
-    val task = {
-        get[Long]("id") ~
-        get[String]("label") map {
-            case id~label => Task(id, label)
-        }
-    }
-
-
-    def all(): List[Task] = DB.withConnection { implicit c =>
-        SQL("select * from task").as(task *)
-    }
-
-    def create(label: String) {
-        DB.withConnection { implicit c =>
-            SQL("insert into task (label) values ({label})").on(
-                'label -> label
-            ).executeUpdate()
-        }
-    }
-
-    def delete(id: Long) {
-        DB.withConnection { implicit c =>
-            SQL("delete from task where id = {id}").on(
-                'id -> id
-            ).executeUpdate()
-        }
-    }
-
+object Task extends ModelCompanion[Task, ObjectId] {
+  val dao = new SalatDAO[Task, ObjectId](collection = mongoCollection("tasks")) {}
 }
