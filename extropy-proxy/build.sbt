@@ -1,9 +1,5 @@
 name := "extropy-proxy"
 
-//lazy val core = RootProject(file("../extropy-core"))
-
-//val proxy = Project(id = "extropy-proxy", base = file(".")).dependsOn(core)
-
 ExtropyBuildSettings.buildSettings
 
 libraryDependencies ++= Seq(
