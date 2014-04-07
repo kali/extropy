@@ -1,4 +1,4 @@
-@(title: String)(content: Html)
+@(title: String, moreHead:Html=Html(""))(content: Html)
 
 <!DOCTYPE html>
 <html>
@@ -11,6 +11,7 @@
 @*
     <script type="text/javascript" src="@routes.MessageController.javascriptRoutes"></script>
 *@
+    @moreHead
 </head>
 <body>
     <div class="navbar navbar-inverse">
