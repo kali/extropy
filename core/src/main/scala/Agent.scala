@@ -15,7 +15,7 @@ import com.novus.salat.global._
 
 import scala.concurrent.duration._
 
-case class ExtropyAgentDescription(_id:String, until:Date)
+import org.zoy.kali.extropy.models.ExtropyAgentDescription
 
 class ExtropyAgentDescriptionDAO(val db:MongoDB) extends SalatDAO[ExtropyAgentDescription,ObjectId](db("agents")) {
 
@@ -34,7 +34,8 @@ class ExtropyAgentDescriptionDAO(val db:MongoDB) extends SalatDAO[ExtropyAgentDe
 class ExtropyAgent( val id:String, val extropyAgentDao:ExtropyAgentDescriptionDAO,
                     val pingHeartBeat:FiniteDuration, val pingValidity:FiniteDuration) extends Actor {
     object Ping {}
-    val pings = context.system.scheduler.schedule(0 milliseconds, pingHeartBeat, self, Ping)(executor=context.system.dispatcher)
+    val pings = context.system.scheduler.schedule(0 milliseconds, pingHeartBeat,
+                    self, Ping)(executor=context.system.dispatcher)
 
     def receive = {
         case Ping => extropyAgentDao.ping(id, pingValidity)

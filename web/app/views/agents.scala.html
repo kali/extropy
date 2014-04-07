@@ -1,0 +1,9 @@
+@(agents:Seq[ExtropyAgentDescription])
+
+@main("Agents") {
+    <h1>@agents.size agents</h1>
+
+    <table>@agents.map { agent =>
+        <tr><td>@agent._id</td></tr>
+    }</table>
+}

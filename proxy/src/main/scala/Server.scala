@@ -133,7 +133,7 @@ class ConnectionActor extends Actor {
         case CommandFailed =>
               context stop self
         case c @ Connected(remote, local) =>
-            socket = sender()
+            socket = sender
             log.debug(s"connected to $socket")
             socket ! Register(self)
             context watch socket

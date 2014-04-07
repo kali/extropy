@@ -9,13 +9,12 @@ libraryDependencies ++= Seq(
   "org.webjars" % "bootstrap" % "3.1.0"
 )
 
-lazy val core = ProjectRef(file(".."), "core")
-
-val web = Project(id = "web", base = file(".")).dependsOn(core)
-
 play.Project.playScalaSettings
+
+unmanagedSourceDirectories in Compile += baseDirectory.value / "../core/src/main/scala/models/"
 
 routesImport += "se.radley.plugin.salat.Binders._"
 
-templatesImport += "org.bson.types.ObjectId"
+templatesImport ++= Seq("org.bson.types.ObjectId",
+                        "org.zoy.kali.extropy.models._")
 
