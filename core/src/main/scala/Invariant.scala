@@ -5,27 +5,35 @@ import mongo._
 import org.bson.{ BSONObject }
 import com.mongodb.casbah.Imports._
 
+import com.novus.salat._
+import com.novus.salat.annotations._
+import com.novus.salat.dao._
+import com.novus.salat.global._
+
+@Salat
 abstract class Invariant {
+    def _id:ObjectId
     def monitoredCollections:List[String]
     def alterWrite(op:Change):Change
 }
 
-abstract class SameDocumentInvariant[ID](collection:String) extends Invariant {
-    val computeOneInMongo:(ID=>AnyRef) = null
+abstract class SameDocumentInvariant(collection:String) extends Invariant {
+    val computeOneInMongo:(AnyRef=>AnyRef) = null
     val computeOneLocally:(BSONObject=>AnyRef) = null
     val monitoredCollections = List(collection)
 
     def sourceFields:Seq[String]
     def targetField:String
 
-    def pullIdAndSource(id:ID):BSONObject
+    def pullIdAndSource(id:AnyRef):BSONObject
 
-    def fixOne(id:ID) {
+    def fixOne(id:AnyRef) {
         val obj:BSONObject = pullIdAndSource(id)
         val value:AnyRef = if(computeOneLocally != null)
                 computeOneLocally(obj)
             else
                 computeOneInMongo(id)
+        obj.put(targetField, value)
     }
 
     def alterWrite(op:Change):Change = op match {
@@ -40,9 +48,9 @@ abstract class SameDocumentInvariant[ID](collection:String) extends Invariant {
     }
 }
 
-abstract class ScalarFieldToScalarFieldInvariant[ID](collection:String, from:String, to:String)
-            extends SameDocumentInvariant[ID](collection) {
-    def pullIdAndSource(id:ID):BSONObject = null
+abstract class ScalarFieldToScalarFieldInvariant(collection:String, from:String, to:String)
+            extends SameDocumentInvariant(collection) {
+    def pullIdAndSource(id:AnyRef):BSONObject = null
     def sourceFields = Seq(from)
     def targetField = to
     override def alterWrite(op:Change):Change = op match {
@@ -67,7 +75,9 @@ abstract class ScalarFieldToScalarFieldInvariant[ID](collection:String, from:Str
     def compute(src:AnyRef):AnyRef
 }
 
-case class StringNormalizationInvariant[ID](val collection:String, val from:String, val to:String)
-        extends ScalarFieldToScalarFieldInvariant[ID](collection, from, to) {
+case class StringNormalizationInvariant(_id:ObjectId, collection:String, from:String, to:String)
+        extends ScalarFieldToScalarFieldInvariant(collection, from, to) {
     override def compute(src:AnyRef):AnyRef = src.toString.toLowerCase
 }
+
+class InvariantDAO(val db:MongoDB) extends SalatDAO[Invariant,ObjectId](db("invariants"))

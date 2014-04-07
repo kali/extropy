@@ -18,8 +18,10 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
 
     behavior of "An extropy proxy"
 
+    val invariants = List(StringNormalizationInvariant(new ObjectId(), "test.users", "name", "normName"))
+
     it should "leave read messages alone" in {
-        val proxy = system.actorOf(ExtropyProxy.props(List(StringNormalizationInvariant("test.users", "name", "normName"))))
+        val proxy = system.actorOf(ExtropyProxy.props(invariants))
         val original = TargettedMessage(Server,
                     CraftedMessage(0, 0, OpQuery(0, "test.users", 12, 12, MongoDBObject("name" -> "Kali"), None))
                 )
@@ -29,7 +31,7 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
     }
 
     it should "leave messages on an arbitrary collection alone" in {
-        val proxy = system.actorOf(ExtropyProxy.props(List(StringNormalizationInvariant("test.users", "name", "normName"))))
+        val proxy = system.actorOf(ExtropyProxy.props(invariants))
         val original = TargettedMessage(Server,
                     CraftedMessage(0, 0, OpInsert(0, "test.not-users", Stream(MongoDBObject("name" -> "Kali"))))
                 )
@@ -39,7 +41,7 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
     }
 
     it should "transform messages on the right collection" in {
-        val proxy = system.actorOf(ExtropyProxy.props(List(StringNormalizationInvariant("test.users", "name", "normName"))))
+        val proxy = system.actorOf(ExtropyProxy.props(invariants))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpInsert(0, "test.users", Stream(MongoDBObject("name" -> "Kali"))))
                 )

@@ -18,8 +18,10 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
 
     behavior of "A same-document invariant"
 
+    val invariants = List(StringNormalizationInvariant(new ObjectId(), "test.users", "name", "normName"))
+
     it should "deal with insert" in {
-        val proxy = system.actorOf(ExtropyProxy.props(List(StringNormalizationInvariant("test.users", "name", "normName"))))
+        val proxy = system.actorOf(ExtropyProxy.props(invariants))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpInsert(0, "test.users", Stream(MongoDBObject("name" -> "Kali"))))
                 )
@@ -29,7 +31,7 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
     }
 
     it should "deal with full body update" in {
-        val proxy = system.actorOf(ExtropyProxy.props(List(StringNormalizationInvariant("test.users", "name", "normName"))))
+        val proxy = system.actorOf(ExtropyProxy.props(invariants))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpUpdate(0, "test.users", 0, MongoDBObject(), MongoDBObject("name" -> "Kali")))
                 )
@@ -39,7 +41,7 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
     }
 
     it should "deal with modifier update" in {
-        val proxy = system.actorOf(ExtropyProxy.props(List(StringNormalizationInvariant("test.users", "name", "normName"))))
+        val proxy = system.actorOf(ExtropyProxy.props(invariants))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpUpdate(0, "test.users", 0, MongoDBObject(),
                         MongoDBObject("$set" -> MongoDBObject("name" -> "Kali"))))
