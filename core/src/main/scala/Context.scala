@@ -7,7 +7,9 @@ object ExtropyContext {
     val extropyDatabaseName = "extropy"
     val extropyMongoUrl = "mongodb://infrabox:27017"
     val extropyMongoClient = MongoClient(MongoClientURI(extropyMongoUrl))
+
     val agentDescriptionDAO = new ExtropyAgentDescriptionDAO(extropyMongoClient(extropyDatabaseName))
     val invariantDAO = new InvariantDAO(extropyMongoClient(extropyDatabaseName))
+    val configurationVersionDAO = new ConfigurationVersionHolderDAO(extropyMongoClient(extropyDatabaseName))
 }
 

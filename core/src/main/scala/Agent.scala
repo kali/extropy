@@ -30,6 +30,14 @@ class ExtropyAgentDescriptionDAO(val db:MongoDB) extends SalatDAO[ExtropyAgentDe
     }
 }
 
+class ConfigurationVersionHolderDAO(val db:MongoDB) {
+    val collection = db("configuration_version")
+    def read:Long = collection.findOne(MongoDBObject("_id" -> "version")).flatMap( d => d.getAs[Long]("value") ).getOrElse(0L)
+    def bump:Long = collection.findAndModify(
+            query=MongoDBObject("_id" -> "version"),
+            update=MongoDBObject("$inc" -> MongoDBObject("value" -> 1L)),
+            sort=null, fields=null, upsert=true, remove=false, returnNew=true).flatMap( _.getAs[Long]("value") ).get
+}
 
 class ExtropyAgent( val id:String, val extropyAgentDao:ExtropyAgentDescriptionDAO,
                     val pingHeartBeat:FiniteDuration, val pingValidity:FiniteDuration) extends Actor {
