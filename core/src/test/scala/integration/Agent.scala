@@ -17,19 +17,21 @@ class AgentSpec extends TestKit(ActorSystem()) with ImplicitSender
 
     it should "maintain ping record in mongo" in {
         val id = "agent-" + System.currentTimeMillis
-        val dao = new ExtropyAgentDescriptionDAO(mongoBackendClient("extropy"))
-        dao.count() should be(0)
-        val agent = system.actorOf(ExtropyAgent.props(id, dao))
+        val context = new BaseExtropyContext {
+            def extropyMongoUrl = "mongodb://localhost:" + mongoBackendPort
+        }
+        context.agentDAO.count() should be(0)
+        val agent = system.actorOf(ExtropyAgent.props(id, context.agentDAO, context.invariantDAO))
         Thread.sleep(50)
-        dao.count() should be(1)
-        val agents = dao.find(MongoDBObject()).toList
+        context.agentDAO.count() should be(1)
+        val agents = context.agentDAO.find(MongoDBObject()).toList
         agents.size should be(1)
         agents.head._id should be (id)
         agents.head.until.getTime should be > ( System.currentTimeMillis )
         agents.head.until.getTime should be < ( System.currentTimeMillis + 2500 )
         system.stop(agent)
         Thread.sleep(50)
-        dao.count() should be(0)
+        context.agentDAO.count() should be(0)
     }
 
     override def afterAll { TestKit.shutdownActorSystem(system) }
