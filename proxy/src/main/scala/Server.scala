@@ -9,13 +9,21 @@ import scala.collection.mutable.Buffer
 
 import org.bson.BSONObject
 
+import com.mongodb.casbah.Imports._
+
 object Boot {
     def main(args:Array[String]) {
+        val hostname = java.net.InetAddress.getLocalHost.getHostName
+        val listeningTo = new InetSocketAddress("localhost", 27000)
+        val extropyMongo = MongoClient(MongoClientURI(args.headOption.getOrElse("mongodb://infrabox:27017")))
+        val id = s"$hostname-$listeningTo"
         val system = ActorSystem("extropy-proxy")
+        val agent = system.actorOf(
+            ExtropyAgent.props(id, new ExtropyAgentDescriptionDAO(extropyMongo("extropy")))
+        )
         val server = system.actorOf(
             ProxyServer.props(  List(StringNormalizationInvariant("test.users", "name", "normName")),
-                                new InetSocketAddress("localhost", 27000),
-                                new InetSocketAddress("infrabox", 27017)
+                                listeningTo, new InetSocketAddress("infrabox", 27017)
             ), "proxyServer")
     }
 }
@@ -114,11 +122,9 @@ class ConnectionActor extends Actor {
 
     def receive = {
         case Received(data) =>
-log.debug(s"received $data")
             readBuffer ++= data
             splitReadBuffer
         case data:ByteString =>
-log.debug(s"about to send $data")
             writeBuffer += data
             writeSome
         case Ack =>
@@ -147,7 +153,6 @@ log.debug(s"about to send $data")
         implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
         while(readBuffer.length > 4 && readBuffer.iterator.getInt <= readBuffer.length) {
             val data = readBuffer.take(readBuffer.iterator.getInt)
-log.debug(s"forward $data to ${context.parent}")
             context.parent ! data
             readBuffer = readBuffer.drop(data.length)
         }
