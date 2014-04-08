@@ -3,7 +3,9 @@ package org.zoy.kali.extropy
 import akka.actor.{ ActorSystem, Actor, ActorRef, Props, Terminated }
 import akka.util.{ ByteString, ByteIterator }
 
-import mongo.{ Message, Change, CraftedMessage }
+import mongo.{ Message, Change, CraftedMessage, OpQuery, OpReply }
+
+import com.mongodb.casbah.Imports._
 
 sealed abstract class Direction
 object Server extends Direction
@@ -21,6 +23,8 @@ class ExtropyProxy( extropy:BaseExtropyContext,
                     initialConfiguration:Option[DynamicConfiguration]) extends Actor {
 
     var configuration:DynamicConfiguration = initialConfiguration.getOrElse(extropy.pullConfiguration)
+    var responseId:Int = 0
+    def nextResponseId = { responseId+=1 ; responseId }
 
     def receive = {
         case c:DynamicConfiguration => {
@@ -28,6 +32,11 @@ class ExtropyProxy( extropy:BaseExtropyContext,
             sender ! AckDynamicConfiguration(c)
         }
         case msg@TargettedMessage(Client,_) => sender ! msg
+        case msg@TargettedMessage(Server, op) if(op.op.isExtropyCommand) => {
+            sender ! TargettedMessage(Client,
+                        CraftedMessage(nextResponseId, op.header.requestId,
+                            handleExtropyCommand(op.op.asInstanceOf[OpQuery])))
+        }
         case msg@TargettedMessage(Server,mongo) =>
             if(mongo.isChange) {
                 val originalChange:Change = mongo.op.asChange
@@ -45,5 +54,18 @@ class ExtropyProxy( extropy:BaseExtropyContext,
                     sender ! msg
             } else
                 sender ! msg
+    }
+
+    def handleExtropyCommand(op:OpQuery):OpReply = {
+        val query = op.query
+        val command = if(query.keySet.isEmpty)
+            "status"
+        else
+            query.keySet.iterator.next
+        command match {
+            case "status" => OpReply(0, 0, 0, 1, Stream(MongoDBObject("ok" -> 1)))
+            case "configVersion" => OpReply(0, 0, 0, 1,
+                            Stream(MongoDBObject("ok" -> 1, "version" -> configuration.version)))
+        }
     }
 }

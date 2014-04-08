@@ -32,6 +32,7 @@ sealed abstract class Message {
     def op:Op
 
     def isChange:Boolean = op.asChange != null
+    def isCommand:Boolean = false
 }
 
 case class IncomingMessage(val binary:ByteString) extends Message {
@@ -68,6 +69,7 @@ abstract sealed class Op {
     def opcode:Int
     def asChange:Change
     def adoptChange(change:Change):Op = throw new NotImplementedError(s"Attempting to adopt $change in $this")
+    def isExtropyCommand:Boolean = false
 }
 
 /*
@@ -173,6 +175,7 @@ case class OpQuery( flags:Int, fullCollectionName:String, numberToSkip:Int, numb
         returnFieldsSelector.foreach( sel => bsb.putBytes(bsonEncoder.encode(sel)) )
         bsb.result
     }
+    override def isExtropyCommand = fullCollectionName.endsWith(".$extropy")
     def asChange = null // FIXME: findAndModify
 }
 object OpQuery {

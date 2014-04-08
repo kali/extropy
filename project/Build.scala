@@ -1,11 +1,13 @@
 import sbt._
 import Keys._
 
+import spray.revolver.RevolverPlugin._
+
 object ExtropyBuildSettings {
 
     val akkaVersion = "2.2.0"
 
-    val buildSettings = Defaults.defaultSettings ++ Seq (
+    val buildSettings = Defaults.defaultSettings ++ Revolver.settings ++ Seq (
         version := "0.0.1",
         scalaVersion := "2.10.3",
         resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",

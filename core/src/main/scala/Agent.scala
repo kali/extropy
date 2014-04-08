@@ -3,7 +3,7 @@ package org.zoy.kali.extropy
 import java.util.Date
 import com.mongodb.casbah.Imports._
 
-import akka.actor.{ ActorSystem, Actor, ActorRef, Props }
+import akka.actor.{ ActorSystem, Actor, ActorRef, Props, Terminated }
 
 import com.novus.salat._
 import com.novus.salat.annotations._
@@ -50,7 +50,7 @@ class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:Act
     val pings = context.system.scheduler.schedule(0 milliseconds, extropy.pingHeartBeat,
                     self, Ping)(executor=context.system.dispatcher)
 
-    var configuration:DynamicConfiguration = DynamicConfiguration.empty
+    var configuration:DynamicConfiguration = extropy.pullConfiguration
 
     def ping {
         var wanted = extropy.agentDAO.readConfigurationVersion
