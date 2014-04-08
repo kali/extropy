@@ -14,14 +14,21 @@ import org.zoy.kali.extropy.mongo._
 import com.mongodb.casbah.Imports._
 
 class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
-  with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll {
+  with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll with MongodbTemporary {
 
     behavior of "An extropy proxy"
 
-    val invariants = List(StringNormalizationInvariant(new ObjectId(), "test.users", "name", "normName"))
+    var extropy:Extropy = null
+    override def beforeAll {
+        super.beforeAll
+        extropy = Extropy(s"mongodb://localhost:$mongoBackendPort")
+        extropy.invariantDAO.save(
+            StringNormalizationInvariant(new ObjectId(), "test.users", "name", "normName")
+        )
+    }
 
     it should "leave read messages alone" in {
-        val proxy = system.actorOf(ExtropyProxy.props(invariants))
+        val proxy = system.actorOf(ExtropyProxy.props(extropy))
         val original = TargettedMessage(Server,
                     CraftedMessage(0, 0, OpQuery(0, "test.users", 12, 12, MongoDBObject("name" -> "Kali"), None))
                 )
@@ -31,7 +38,7 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
     }
 
     it should "leave messages on an arbitrary collection alone" in {
-        val proxy = system.actorOf(ExtropyProxy.props(invariants))
+        val proxy = system.actorOf(ExtropyProxy.props(extropy))
         val original = TargettedMessage(Server,
                     CraftedMessage(0, 0, OpInsert(0, "test.not-users", Stream(MongoDBObject("name" -> "Kali"))))
                 )
@@ -41,7 +48,7 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
     }
 
     it should "transform messages on the right collection" in {
-        val proxy = system.actorOf(ExtropyProxy.props(invariants))
+        val proxy = system.actorOf(ExtropyProxy.props(extropy))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpInsert(0, "test.users", Stream(MongoDBObject("name" -> "Kali"))))
                 )
@@ -53,5 +60,5 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
         op.documents.head should be(MongoDBObject("name" -> "Kali", "normName" -> "kali"))
     }
 
-     override def afterAll { TestKit.shutdownActorSystem(system) }
+    override def afterAll { TestKit.shutdownActorSystem(system) }
 }

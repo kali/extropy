@@ -12,11 +12,17 @@ import com.mongodb.casbah.Imports._
 class ProxyServerSpec extends FlatSpec with MongodbTemporary with ShouldMatchers {
     behavior of "An extropy proxy"
 
+    var extropy:Extropy = null
+    override def beforeAll {
+        super.beforeAll
+        extropy = Extropy(s"mongodb://localhost:$mongoBackendPort")
+    }
+
     it should "be running" in {
         val system = ActorSystem("extropy-proxy")
         val port = de.flapdoodle.embed.process.runtime.Network.getFreeServerPort
         val proxy = system.actorOf(ProxyServer.props(
-            List(),
+            extropy,
             new InetSocketAddress("127.0.0.1", port),
             new InetSocketAddress("127.0.0.1", mongoBackendPort)
         ), "proxy")

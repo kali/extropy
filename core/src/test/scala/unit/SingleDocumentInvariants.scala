@@ -14,14 +14,21 @@ import org.zoy.kali.extropy.mongo._
 import com.mongodb.casbah.Imports._
 
 class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSender
-  with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll {
+  with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll with MongodbTemporary {
 
     behavior of "A same-document invariant"
 
-    val invariants = List(StringNormalizationInvariant(new ObjectId(), "test.users", "name", "normName"))
+    var extropy:Extropy = null
+    override def beforeAll {
+        super.beforeAll
+        extropy = Extropy(s"mongodb://localhost:$mongoBackendPort")
+        extropy.invariantDAO.save(
+            StringNormalizationInvariant(new ObjectId(), "test.users", "name", "normName")
+        )
+    }
 
     it should "deal with insert" in {
-        val proxy = system.actorOf(ExtropyProxy.props(invariants))
+        val proxy = system.actorOf(ExtropyProxy.props(extropy))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpInsert(0, "test.users", Stream(MongoDBObject("name" -> "Kali"))))
                 )
@@ -31,7 +38,7 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
     }
 
     it should "deal with full body update" in {
-        val proxy = system.actorOf(ExtropyProxy.props(invariants))
+        val proxy = system.actorOf(ExtropyProxy.props(extropy))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpUpdate(0, "test.users", 0, MongoDBObject(), MongoDBObject("name" -> "Kali")))
                 )
@@ -41,7 +48,7 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
     }
 
     it should "deal with modifier update" in {
-        val proxy = system.actorOf(ExtropyProxy.props(invariants))
+        val proxy = system.actorOf(ExtropyProxy.props(extropy))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpUpdate(0, "test.users", 0, MongoDBObject(),
                         MongoDBObject("$set" -> MongoDBObject("name" -> "Kali"))))
@@ -50,4 +57,6 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
         val op:OpUpdate = transformed.message.op.asInstanceOf[OpUpdate]
         op.update should be(MongoDBObject("$set" -> MongoDBObject("name" -> "Kali", "normName" -> "kali")))
     }
+
+    override def afterAll { TestKit.shutdownActorSystem(system) }
 }

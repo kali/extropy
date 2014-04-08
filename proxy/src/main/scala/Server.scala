@@ -15,26 +15,22 @@ object Boot {
     def main(args:Array[String]) {
         val hostname = java.net.InetAddress.getLocalHost.getHostName
         val listeningTo = new InetSocketAddress("localhost", 27000)
-        val extropyMongo = MongoClient(MongoClientURI(args.headOption.getOrElse("mongodb://infrabox:27017")))
         val id = s"$hostname-$listeningTo"
         val system = ActorSystem("extropy-proxy")
-        val agent = system.actorOf(
-            ExtropyAgent.props(id, new ExtropyAgentDescriptionDAO(extropyMongo("extropy")))
-        )
+        val extropy = Extropy("mongodb://infrabox:27017")
         val server = system.actorOf(
-            ProxyServer.props(  List(StringNormalizationInvariant("test.users", "name", "normName")),
-                                listeningTo, new InetSocketAddress("infrabox", 27017)
+            ProxyServer.props(  extropy, listeningTo, new InetSocketAddress("infrabox", 27017)
             ), "proxyServer")
     }
 }
 
 // this is the TCP socket/dispatcher
 object ProxyServer {
-    def props(invariants:Seq[Invariant], bind:InetSocketAddress, send:InetSocketAddress) =
-        Props(classOf[ProxyServer], invariants, bind, send)
+    def props(extropy:BaseExtropyContext, bind:InetSocketAddress, send:InetSocketAddress) =
+        Props(classOf[ProxyServer], extropy, bind, send)
 }
 
-class ProxyServer(val invariants:Seq[Invariant], val bind:InetSocketAddress, val send:InetSocketAddress)
+class ProxyServer(val extropy:BaseExtropyContext, val bind:InetSocketAddress, val send:InetSocketAddress)
         extends Actor {
 
     import Tcp._
@@ -43,6 +39,13 @@ class ProxyServer(val invariants:Seq[Invariant], val bind:InetSocketAddress, val
     val log = Logging(context.system, this)
 
     log.info(s"Setup proxy from $bind to $send")
+
+    var configuration = extropy.pullConfiguration
+    val agent = context.actorOf(ExtropyAgent.props(extropy.hostname + "/" + bind.toString, extropy, self), "agent")
+
+    import scala.collection.mutable.Set
+    val pendingAcknowledgement:Set[ActorRef] = Set()
+
     IO(Tcp) ! Bind(self, bind)
 
     def receive = {
@@ -51,26 +54,50 @@ class ProxyServer(val invariants:Seq[Invariant], val bind:InetSocketAddress, val
 
         case CommandFailed(_: Bind) => context stop self
 
-        case c @ Connected(remote, local) =>
-            context.actorOf(ProxyPipe.props(sender, send),
-                                    "worker-" + remote.getHostName +  ":" + remote.getPort)
+        case c @ Connected(remote, local) => {
+            val kid = context.actorOf(ProxyPipe.props(extropy, sender, send),
+                                    "proxy-for-" + remote.getHostName +  ":" + remote.getPort)
+            context watch kid
+        }
+
+        case c:DynamicConfiguration => {
+            configuration = c
+            pendingAcknowledgement.clear
+            context.children.filter( _.path.name.startsWith("proxy-for") ).foreach { kid =>
+                pendingAcknowledgement.add(kid)
+                kid ! c
+            }
+        }
+
+        case a:AckDynamicConfiguration => {
+            if(a.config == configuration) {
+                pendingAcknowledgement.remove(sender)
+                if(pendingAcknowledgement.isEmpty)
+                    agent ! a
+            }
+        }
+
+        case Terminated(kid) => {
+            pendingAcknowledgement.remove(kid)
+        }
+
 
     }
 }
 
 object ProxyPipe {
-    def props(incomingFrontendConnection:ActorRef, backendAddress:InetSocketAddress) =
-        Props(classOf[ProxyPipe], incomingFrontendConnection, backendAddress)
+    def props(extropy:BaseExtropyContext, incomingFrontendConnection:ActorRef, backendAddress:InetSocketAddress) =
+        Props(classOf[ProxyPipe], extropy, incomingFrontendConnection, backendAddress)
 }
 
-class ProxyPipe(socket:ActorRef, backendAddress:InetSocketAddress) extends Actor {
+class ProxyPipe(extropy:BaseExtropyContext, socket:ActorRef, backendAddress:InetSocketAddress) extends Actor {
     import Tcp._
     import context.system
 
     val log = Logging(context.system, this)
     val frontendHandler = context.actorOf(ConnectionActor.props(socket), "frontend")
     val backendHandler = context.actorOf(ConnectionActor.props(backendAddress), "backend")
-    val proxy = context.actorOf(ExtropyProxy.props(List()), "proxy")
+    val proxy = context.actorOf(ExtropyProxy.props(extropy), "proxy")
 
     context watch frontendHandler
     context watch backendHandler
@@ -83,6 +110,8 @@ class ProxyPipe(socket:ActorRef, backendAddress:InetSocketAddress) extends Actor
             proxy ! TargettedMessage(Client, mongo.IncomingMessage(msg))
         case TargettedMessage(Client, msg) => frontendHandler ! msg.binary
         case TargettedMessage(Server, msg) => backendHandler ! msg.binary
+        case msg:DynamicConfiguration => proxy ! msg
+        case msg:AckDynamicConfiguration => context.parent ! msg
     }
 }
 
