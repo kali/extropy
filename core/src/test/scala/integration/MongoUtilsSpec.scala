@@ -8,6 +8,7 @@ import org.zoy.kali.extropy.MongodbTemporary
 import com.mongodb.casbah.Imports._
 
 import scala.concurrent.duration._
+import MongoLockingPool.LockerIdentity
 
 class MongoUtilsSpec extends FlatSpec with ShouldMatchers {
     behavior of "MongoUtils"
@@ -42,7 +43,7 @@ class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAf
         mlp = MongoLockingPool(collection, defaultTimeout=100 milliseconds)
     }
 
-    implicit val _lockerId:MongoLockingPool.LockerIdentity = MongoLockingPool.LockerIdentity("me")
+    implicit val _lockerId:LockerIdentity = LockerIdentity("me")
 
     it should "bless records iif they are not blessed already" in {
         collection.save(MongoDBObject("_id" -> "foo", "bar" -> "baz"))
@@ -74,6 +75,16 @@ class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAf
         doc should contain key(mlp.subfield)
     }
 
+    it should "allow locked insertion" in {
+        mlp.insertLocked(MongoDBObject("_id" -> "foo"))
+        var doc = collection.find(MongoDBObject("_id" -> "foo")).next.toMap
+        doc should contain key(mlp.subfield)
+        doc.get(mlp.subfield) shouldBe a [DBObject]
+        doc.get(mlp.subfield).asInstanceOf[DBObject].toMap should contain key("lb")
+
+        mlp.lockOne() should be('empty)
+    }
+
     it should "offer exactly two locks when there are two blessed objects" in {
         collection.insert(mlp.blessed(MongoDBObject("_id" -> "foo")), mlp.blessed(MongoDBObject("_id" -> "bar")))
         mlp.lockOne() should not be('empty)
@@ -91,6 +102,23 @@ class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAf
         mlp.lockOne() should not be('empty)
     }
 
+    it should "prevent release by another locker" in {
+        collection.insert(mlp.blessed(MongoDBObject("_id" -> "foo")))
+        val lock = mlp.lockOne().get
+        an [Exception] should be thrownBy {
+            mlp.release(lock)(LockerIdentity("not me"))
+        }
+    }
+
+    it should "prevent late release" in {
+        collection.insert(mlp.blessed(MongoDBObject("_id" -> "foo")))
+        val lock = mlp.lockOne().get
+        Thread.sleep( mlp.defaultTimeout.toMillis * 2 )
+        an [Exception] should be thrownBy {
+            mlp.release(lock)
+        }
+    }
+
     it should "lock and delete on unlock" in {
         collection.insert(mlp.blessed(MongoDBObject("_id" -> "foo")))
         val lock = mlp.lockOne().get
@@ -99,7 +127,7 @@ class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAf
         collection.size should be(0)
     }
 
-    it should "ignore obsolete locks" in {
+    it should "ignore obsolete locks when locking" in {
         collection.insert(mlp.blessed(MongoDBObject("_id" -> "foo")))
         mlp.lockOne() should not be ('empty)
         mlp.lockOne() should be ('empty)
@@ -116,5 +144,22 @@ class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAf
             mlp.relock(lock)
         }
         mlp.lockOne() should be ('empty)
+    }
+
+    it should "prevent relock by another locker" in {
+        collection.insert(mlp.blessed(MongoDBObject("_id" -> "foo")))
+        val lock = mlp.lockOne().get
+        an [Exception] should be thrownBy {
+            mlp.relock(lock)(LockerIdentity("not me"))
+        }
+    }
+
+    it should "prevent relock after the timeout" in {
+        collection.insert(mlp.blessed(MongoDBObject("_id" -> "foo")))
+        val lock = mlp.lockOne().get
+        Thread.sleep( mlp.defaultTimeout.toMillis * 2 )
+        an [Exception] should be thrownBy {
+            mlp.relock(lock)
+        }
     }
 }

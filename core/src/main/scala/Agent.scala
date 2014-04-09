@@ -3,7 +3,7 @@ package org.zoy.kali.extropy
 import java.util.Date
 import com.mongodb.casbah.Imports._
 
-import akka.actor.{ ActorSystem, Actor, ActorRef, Props, Terminated }
+import akka.actor.{ ActorSystem, Actor, ActorRef, Props, Terminated, PoisonPill }
 
 import com.novus.salat._
 import com.novus.salat.annotations._
@@ -20,11 +20,11 @@ import org.zoy.kali.extropy.models.ExtropyAgentDescription
 import mongo.MongoLockingPool
 import mongo.MongoLockingPool.LockerIdentity
 
-class ExtropyAgentDescriptionDAO(val db:MongoDB) {
+class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration) {
     val collection = db("agents")
     val salat = new SalatDAO[ExtropyAgentDescription,ObjectId](collection) {}
 
-    val agentMLP = MongoLockingPool(collection)
+    val agentMLP = MongoLockingPool(collection, pingValidity)
 
     def register(id:String) {
         agentMLP.insertLocked(MongoDBObject("_id" -> id))(LockerIdentity(id))
@@ -37,7 +37,6 @@ class ExtropyAgentDescriptionDAO(val db:MongoDB) {
     def unregister(id:String) {
         agentMLP.release(MongoDBObject("_id" -> id), delete=true)(LockerIdentity(id))
     }
-
 
     def ackVersion(id:String, version:Long) {
         collection.update(MongoDBObject("_id" -> id),
@@ -58,6 +57,8 @@ class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:Act
     val pings = context.system.scheduler.schedule(0 milliseconds, extropy.pingHeartBeat,
                     self, Ping)(executor=context.system.dispatcher)
 
+    context watch client
+
     var configuration:DynamicConfiguration = extropy.pullConfiguration
 
     def ping {
@@ -75,12 +76,13 @@ class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:Act
     def receive = {
         case Ping => ping
         case AckDynamicConfiguration(dc:DynamicConfiguration) => extropy.agentDAO.ackVersion(id, dc.version)
+        case PoisonPill => pings.cancel
     }
 
     override def postStop = {
-        super.postStop
         pings.cancel
         extropy.agentDAO.unregister(id)
+        super.postStop
     }
 
 }

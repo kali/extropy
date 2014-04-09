@@ -3,7 +3,7 @@ package org.zoy.kali.extropy
 import org.scalatest._
 import org.scalatest.matchers.ShouldMatchers
 
-import akka.actor.{ ActorSystem, Actor, ActorRef, Props }
+import akka.actor.{ ActorSystem, Actor, ActorRef, Props, PoisonPill }
 import akka.testkit.{ TestKit, TestActorRef, ImplicitSender, CallingThreadDispatcher }
 
 import com.mongodb.casbah.Imports._
@@ -24,40 +24,45 @@ class AgentSpec extends TestKit(ActorSystem()) with ImplicitSender
         context = Extropy(s"mongodb://localhost:$mongoBackendPort")
     }
 
-    it should "maintain ping record in mongo" in {
-        val id = "agent-" + System.currentTimeMillis
-        val agent = system.actorOf(ExtropyAgent.props(id, context, self))
-        Thread.sleep(250)
-        val agents = context.agentDAO.find(MongoDBObject()).toList
-        agents.size should be(1)
-        agents.head._id should be (id)
-        agents.head.until.getTime should be > ( System.currentTimeMillis )
-        agents.head.until.getTime should be < ( System.currentTimeMillis + 2500 )
-        system.stop(agent)
-        Thread.sleep(50)
-        context.agentDAO.count() should be(0)
+    it should "prevent two agents to share their name" in {
+        val id = "agent-1"
+        val agent1 = system.actorOf(ExtropyAgent.props(id, context, self))
+        an [Exception] should be thrownBy {
+            system.actorOf(ExtropyAgent.props(id, context, self))
+        }
+        agent1 ! PoisonPill
     }
 
-    it should "notify configuration changes to its client" taggedAs(KaliTest) in {
-        val id = "agent-" + System.currentTimeMillis
-        context.agentDAO.remove(MongoDBObject.empty)
+    it should "maintain ping record in mongo" in {
+        val id = "agent-2"
+        val agent = system.actorOf(ExtropyAgent.props(id, context, self))
+        Thread.sleep(context.pingHeartBeat.toMillis*2)
+        val agentDoc = context.agentDAO.salat.findOne(MongoDBObject("_id" -> id)).get
+        agentDoc._id should be (id)
+        agentDoc.emlp.until.getTime should be > ( System.currentTimeMillis )
+        agentDoc.emlp.until.getTime should be < ( System.currentTimeMillis + context.pingValidity.toMillis )
+        agent ! PoisonPill
+    }
+
+    it should "notify configuration changes to its client" in {
+        val id = "agent-3"
         val agent = system.actorOf(ExtropyAgent.props(id, context, self), "agent")
         Thread.sleep(250)
         val conf = context.agentDAO.bumpConfigurationVersion
         expectMsgClass(classOf[DynamicConfiguration])
-        system.stop(agent)
+        agent ! PoisonPill
     }
 
     it should "propagate configuration changes ack to mongo" in {
         val id = "agent-" + System.currentTimeMillis
-        context.agentDAO.remove(MongoDBObject.empty)
+        context.agentDAO.salat.remove(MongoDBObject.empty)
         val agent = system.actorOf(ExtropyAgent.props(id, context, self))
         agent ! AckDynamicConfiguration(DynamicConfiguration(12, List()))
         Thread.sleep(500)
-        val agentDoc = context.agentDAO.findOne(MongoDBObject()).get
+        val agentDoc = context.agentDAO.salat.findOne(MongoDBObject("_id" -> id)).get
         agentDoc.configurationVersion should be(12)
-        system.stop(agent)
+        agent ! PoisonPill
     }
 
-    override def afterAll { TestKit.shutdownActorSystem(system) }
+    override def afterAll { super.afterAll; TestKit.shutdownActorSystem(system) }
 }

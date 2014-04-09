@@ -58,5 +58,5 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
         op.update should be(MongoDBObject("$set" -> MongoDBObject("name" -> "Kali", "normName" -> "kali")))
     }
 
-    override def afterAll { TestKit.shutdownActorSystem(system) }
+    override def afterAll { super.afterAll; TestKit.shutdownActorSystem(system) }
 }

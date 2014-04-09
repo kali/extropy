@@ -69,23 +69,26 @@ case class MongoLockingPool(
         )))
     }
 
+    def ownedLockQueryCriteria(lock:DBObject)(implicit by:LockerIdentity) = MongoDBObject(
+        s"$subfield.lb" -> by.id, "_id" -> lock.get("_id"),
+        s"$subfield.lu" -> MongoDBObject("$gt" -> new Date())
+    )
+
     def release(lock:DBObject, update:DBObject=null, delete:Boolean=false)(implicit by:LockerIdentity) {
-        val q = MongoDBObject( s"$subfield.lb" -> by.id, "_id" -> lock.get("_id") )
         val u = MongoDBObject("$set" -> MongoDBObject(s"$subfield.lb" -> null, s"$subfield.lu" -> new Date(0)))
-        if(delete)
-            collection.findAndRemove(q)
+        (if(delete)
+            collection.findAndRemove(ownedLockQueryCriteria(lock))
         else if(update != null)
-            collection.findAndModify(q, update=recursiveMerge(u, update))
+            collection.findAndModify(ownedLockQueryCriteria(lock), update=recursiveMerge(u, update))
         else
-            collection.findAndModify(q, u)
+            collection.findAndModify(ownedLockQueryCriteria(lock), u)
+        ).orElse(throw new IllegalStateException("failure to release (not owned or late or inexistent): " + lock))
     }
 
     def relock(lock:DBObject,timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity) {
         collection.findAndModify(
-            query= MongoDBObject(   s"$subfield.lb" -> by.id,
-                                    "_id" -> lock.get("_id"),
-                                    s"$subfield.lu" -> MongoDBObject("$gt" -> new Date()) ),
+            query= ownedLockQueryCriteria(lock),
             update= lockUpdate(timeout)
-        )
+        ).orElse(throw new IllegalStateException("failure to relock (not owned or late or inexistent): " + lock))
     }
 }

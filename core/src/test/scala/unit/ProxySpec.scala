@@ -60,5 +60,5 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
         op.documents.head should be(MongoDBObject("name" -> "Kali", "normName" -> "kali"))
     }
 
-    override def afterAll { TestKit.shutdownActorSystem(system) }
+    override def afterAll { super.afterAll; TestKit.shutdownActorSystem(system) }
 }
