@@ -63,6 +63,12 @@ case class MongoLockingPool(
             update = if(updater!=null) recursiveMerge(lockUpdate(timeout), updater) else lockUpdate(timeout)
         )
 
+    def insertLocked(doc:DBObject, timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity) {
+        collection.insert(recursiveMerge(doc, MongoDBObject(subfield ->
+            MongoDBObject("lb" -> by.id, "lu" -> new Date(timeout.fromNow.time.toMillis))
+        )))
+    }
+
     def release(lock:DBObject, update:DBObject=null, delete:Boolean=false)(implicit by:LockerIdentity) {
         val q = MongoDBObject( s"$subfield.lb" -> by.id, "_id" -> lock.get("_id") )
         val u = MongoDBObject("$set" -> MongoDBObject(s"$subfield.lb" -> null, s"$subfield.lu" -> new Date(0)))

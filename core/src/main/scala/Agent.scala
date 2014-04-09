@@ -17,23 +17,31 @@ import scala.concurrent.duration._
 
 import org.zoy.kali.extropy.models.ExtropyAgentDescription
 
-class ExtropyAgentDescriptionDAO(val db:MongoDB) extends SalatDAO[ExtropyAgentDescription,ObjectId](db("agents")) {
+import mongo.MongoLockingPool
+import mongo.MongoLockingPool.LockerIdentity
+
+class ExtropyAgentDescriptionDAO(val db:MongoDB) {
+    val collection = db("agents")
+    val salat = new SalatDAO[ExtropyAgentDescription,ObjectId](collection) {}
+
+    val agentMLP = MongoLockingPool(collection)
+
+    def register(id:String) {
+        agentMLP.insertLocked(MongoDBObject("_id" -> id))(LockerIdentity(id))
+    }
 
     def ping(id:String, validity:FiniteDuration) {
-        val until = new Date(validity.fromNow.time.toMillis)
-        collection.update(MongoDBObject("_id" -> id),
-            MongoDBObject("$set" -> MongoDBObject("until" -> until)),
-        upsert=true)
+        agentMLP.relock(MongoDBObject("_id" -> id), validity)(LockerIdentity(id))
     }
+
+    def unregister(id:String) {
+        agentMLP.release(MongoDBObject("_id" -> id), delete=true)(LockerIdentity(id))
+    }
+
 
     def ackVersion(id:String, version:Long) {
         collection.update(MongoDBObject("_id" -> id),
-            MongoDBObject("$set" -> MongoDBObject("configurationVersion" -> version)),
-        upsert=true)
-    }
-
-    def removeById(id:String) {
-        remove(MongoDBObject("_id" -> id))
+            MongoDBObject("$set" -> MongoDBObject("configurationVersion" -> version)))
     }
 
     val versionCollection = db("configuration_version")
@@ -46,7 +54,7 @@ class ExtropyAgentDescriptionDAO(val db:MongoDB) extends SalatDAO[ExtropyAgentDe
 }
 
 class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:ActorRef) extends Actor {
-    object Ping {}
+    object Ping
     val pings = context.system.scheduler.schedule(0 milliseconds, extropy.pingHeartBeat,
                     self, Ping)(executor=context.system.dispatcher)
 
@@ -72,11 +80,14 @@ class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:Act
     override def postStop = {
         super.postStop
         pings.cancel
-        extropy.agentDAO.removeById(id)
+        extropy.agentDAO.unregister(id)
     }
 
 }
 
 object ExtropyAgent {
-    def props(id:String, extropy:BaseExtropyContext, client:ActorRef) = Props(classOf[ExtropyAgent], id, extropy, client)
+    def props(id:String, extropy:BaseExtropyContext, client:ActorRef) = {
+        extropy.agentDAO.register(id)
+        Props(classOf[ExtropyAgent], id, extropy, client)
+    }
 }
