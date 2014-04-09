@@ -39,7 +39,7 @@ class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAf
         super.beforeEach
         collection = mongoBackendClient("test")("mongo_locking_pool_test")
         collection.drop
-        mlp = MongoLockingPool(collection, defaultTimeout=100 millis)
+        mlp = MongoLockingPool(collection, defaultTimeout=100 milliseconds)
     }
 
     implicit val _lockerId:MongoLockingPool.LockerIdentity = MongoLockingPool.LockerIdentity("me")
@@ -105,5 +105,16 @@ class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAf
         mlp.lockOne() should be ('empty)
         Thread.sleep( mlp.defaultTimeout.toMillis * 2)
         mlp.lockOne() should not be ('empty)
+    }
+
+    it should "relock locks" in {
+        collection.insert(mlp.blessed(MongoDBObject("_id" -> "foo")))
+        val lock = mlp.lockOne().get
+        mlp.lockOne() should be ('empty)
+        (0 to 20).foreach { i =>
+            Thread.sleep( mlp.defaultTimeout.toMillis / 10 )
+            mlp.relock(lock)
+        }
+        mlp.lockOne() should be ('empty)
     }
 }

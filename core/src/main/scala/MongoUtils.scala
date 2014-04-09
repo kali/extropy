@@ -48,7 +48,7 @@ case class MongoLockingPool(
 
     def lockUpdate(timeout:FiniteDuration)(implicit by:LockerIdentity):DBObject =
         MongoDBObject("$set" -> MongoDBObject(
-            s"$subfield.lb" -> by,
+            s"$subfield.lb" -> by.id,
             s"$subfield.lu" -> new Date(timeout.fromNow.time.toMillis)
         ))
 
@@ -64,7 +64,7 @@ case class MongoLockingPool(
         )
 
     def release(lock:DBObject, update:DBObject=null, delete:Boolean=false)(implicit by:LockerIdentity) {
-        val q = MongoDBObject( s"$subfield.lb" -> by, "_id" -> lock.get("_id") )
+        val q = MongoDBObject( s"$subfield.lb" -> by.id, "_id" -> lock.get("_id") )
         val u = MongoDBObject("$set" -> MongoDBObject(s"$subfield.lb" -> null, s"$subfield.lu" -> new Date(0)))
         if(delete)
             collection.findAndRemove(q)
@@ -72,5 +72,14 @@ case class MongoLockingPool(
             collection.findAndModify(q, update=recursiveMerge(u, update))
         else
             collection.findAndModify(q, u)
+    }
+
+    def relock(lock:DBObject,timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity) {
+        collection.findAndModify(
+            query= MongoDBObject(   s"$subfield.lb" -> by.id,
+                                    "_id" -> lock.get("_id"),
+                                    s"$subfield.lu" -> MongoDBObject("$gt" -> new Date()) ),
+            update= lockUpdate(timeout)
+        )
     }
 }
