@@ -29,10 +29,6 @@ case class MongoLockingPool(
     defaultTimeout:FiniteDuration=1 second
 ) {
 
-    implicit class DeadlineToDate(d:Deadline) {
-        def toDate = new Date(d.time.toMillis)
-    }
-
     import MongoLockingPool.LockerIdentity
     import MongoUtils.recursiveMerge
 
@@ -51,7 +47,10 @@ case class MongoLockingPool(
     def defaultLockingSortCriteria:DBObject = MongoDBObject.empty
 
     def lockUpdate(timeout:FiniteDuration)(implicit by:LockerIdentity):DBObject =
-        MongoDBObject("$set" -> MongoDBObject(s"$subfield.lb" -> by, s"$subfield.lu" -> timeout.fromNow.toDate))
+        MongoDBObject("$set" -> MongoDBObject(
+            s"$subfield.lb" -> by,
+            s"$subfield.lu" -> new Date(timeout.fromNow.time.toMillis)
+        ))
 
     def lockOne(selectorCriteria:DBObject=null,sortCriteria:DBObject=null,
                 updater:DBObject=null,timeout:FiniteDuration=defaultTimeout)
