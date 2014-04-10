@@ -7,8 +7,8 @@ import com.mongodb.casbah.Imports._
 trait BaseExtropyContext {
     val hostname = java.net.InetAddress.getLocalHost.getHostName
 
-    def pingHeartBeat = 1 second
-    def pingValidity = 1 minute
+    def agentHeartBeat = 1 second
+    def agentLockDuration = 1 minute
 
     def overseerHeartBeat = 1 second
     def foremanHeartBeat = 1 second
@@ -22,7 +22,7 @@ trait BaseExtropyContext {
 
 case class Extropy(val extropyMongoUrl:String, val extropyDatabaseName:String="extropy") extends BaseExtropyContext {
     val extropyMongoClient = MongoClient(MongoClientURI(extropyMongoUrl))
-    val agentDAO = new ExtropyAgentDescriptionDAO(extropyMongoClient(extropyDatabaseName), pingValidity)
+    val agentDAO = new ExtropyAgentDescriptionDAO(extropyMongoClient(extropyDatabaseName), agentLockDuration)
     val invariantDAO = new InvariantDAO(extropyMongoClient(extropyDatabaseName), invariantLockDuration)
 }
 

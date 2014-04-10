@@ -54,7 +54,7 @@ class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration
 
 class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:ActorRef) extends Actor {
     object Ping
-    val pings = context.system.scheduler.schedule(0 milliseconds, extropy.pingHeartBeat,
+    val pings = context.system.scheduler.schedule(0 milliseconds, extropy.agentHeartBeat,
                     self, Ping)(executor=context.system.dispatcher)
 
     context watch client
@@ -70,7 +70,7 @@ class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:Act
             }
             client ! configuration
         }
-        extropy.agentDAO.ping(id, extropy.pingValidity)
+        extropy.agentDAO.ping(id, extropy.agentLockDuration)
     }
 
     def receive = {
