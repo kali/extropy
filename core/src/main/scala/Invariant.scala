@@ -12,9 +12,7 @@ import com.novus.salat.global._
 
 import scala.concurrent.duration._
 
-import MongoLockingPool.LockerIdentity
-
-import models.MongoLock
+import mongoutils._
 
 @Salat
 abstract class Invariant {

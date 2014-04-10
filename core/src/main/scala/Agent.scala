@@ -15,11 +15,9 @@ import com.novus.salat.global._
 
 import scala.concurrent.duration._
 
-import org.zoy.kali.extropy.models.ExtropyAgentDescription
+import mongoutils._
 
-import mongo.MongoLockingPool
-import mongo.MongoLockingPool.LockerIdentity
-
+case class ExtropyAgentDescription(_id:String, emlp:MongoLock, configurationVersion:Long=(-1L))
 class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration) {
     val collection = db("agents")
     val salat = new SalatDAO[ExtropyAgentDescription,ObjectId](collection) {}

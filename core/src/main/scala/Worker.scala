@@ -5,7 +5,7 @@ import akka.event.Logging
 
 import scala.concurrent.duration._
 import com.mongodb.casbah.Imports._
-import mongo.MongoLockingPool.LockerIdentity
+import mongoutils._
 
 object Overseer {
     def props(extropy:BaseExtropyContext, name:String) =

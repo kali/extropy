@@ -1,9 +1,10 @@
-package org.zoy.kali.extropy.mongo
+package org.zoy.kali.extropy.mongoutils
 
 import java.util.Date
 
 import com.mongodb.casbah.Imports._
 import scala.concurrent.duration._
+import com.novus.salat.annotations._
 
 object MongoUtils {
     def recursiveMerge( docs:DBObject* ):DBObject =
@@ -20,16 +21,14 @@ object MongoUtils {
         }
 }
 
-object MongoLockingPool {
-    case class LockerIdentity(id:AnyRef)
-}
+case class LockerIdentity(id:AnyRef)
+case class MongoLock(@Key("lu") until:Date, @Key("lb") locker:Option[LockerIdentity])
 
 case class MongoLockingPool(
     collection:MongoCollection,
     defaultTimeout:FiniteDuration=1 second
 ) {
 
-    import MongoLockingPool.LockerIdentity
     import MongoUtils.recursiveMerge
 
     def subfield:String = "emlp"

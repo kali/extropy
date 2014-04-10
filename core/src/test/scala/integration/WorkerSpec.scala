@@ -13,7 +13,7 @@ import com.mongodb.casbah.Imports._
 import scala.concurrent.duration._
 import scala.concurrent.Await
 
-import mongo.MongoLockingPool.LockerIdentity
+import mongoutils._
 
 class WorkerSpec extends FlatSpec with ShouldMatchers with MongodbTemporary with Eventually with ExtropyFixture {
 

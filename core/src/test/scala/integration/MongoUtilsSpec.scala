@@ -1,4 +1,4 @@
-package org.zoy.kali.extropy.mongo
+package org.zoy.kali.extropy.mongoutils
 
 import org.scalatest._
 import org.scalatest.matchers.ShouldMatchers
@@ -8,7 +8,6 @@ import org.zoy.kali.extropy.MongodbTemporary
 import com.mongodb.casbah.Imports._
 
 import scala.concurrent.duration._
-import MongoLockingPool.LockerIdentity
 
 class MongoUtilsSpec extends FlatSpec with ShouldMatchers {
     behavior of "MongoUtils"
