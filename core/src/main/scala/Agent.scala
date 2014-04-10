@@ -65,7 +65,7 @@ class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:Act
         var wanted = extropy.agentDAO.readConfigurationVersion
         if(wanted != configuration.version) {
             while(wanted > configuration.version) {
-                configuration = DynamicConfiguration(wanted, extropy.invariantDAO.find(MongoDBObject.empty).toList)
+                configuration = extropy.pullConfiguration
                 wanted = extropy.agentDAO.readConfigurationVersion
             }
             client ! configuration
@@ -76,6 +76,7 @@ class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:Act
     def receive = {
         case Ping => ping
         case AckDynamicConfiguration(dc:DynamicConfiguration) => extropy.agentDAO.ackVersion(id, dc.version)
+        case Terminated(_) => pings.cancel
         case PoisonPill => pings.cancel
     }
 

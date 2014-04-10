@@ -22,7 +22,7 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
     override def beforeAll {
         super.beforeAll
         extropy = Extropy(s"mongodb://localhost:$mongoBackendPort")
-        extropy.invariantDAO.save(
+        extropy.invariantDAO.salat.save(
             StringNormalizationInvariant(new ObjectId(), "test.users", "name", "normName")
         )
     }

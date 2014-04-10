@@ -5,7 +5,7 @@ import spray.revolver.RevolverPlugin._
 
 object ExtropyBuildSettings {
 
-    val akkaVersion = "2.2.0"
+    val akkaVersion = "2.3.1"
 
     val buildSettings = Defaults.defaultSettings ++ Revolver.settings ++ Seq (
         version := "0.0.1",

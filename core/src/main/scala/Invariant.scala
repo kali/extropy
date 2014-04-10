@@ -10,9 +10,11 @@ import com.novus.salat.annotations._
 import com.novus.salat.dao._
 import com.novus.salat.global._
 
+import MongoLockingPool.LockerIdentity
+
 @Salat
 abstract class Invariant {
-    def _id:ObjectId
+    def id:ObjectId
     def monitoredCollections:List[String]
     def alterWrite(op:Change):Change
 }
@@ -75,9 +77,20 @@ abstract class ScalarFieldToScalarFieldInvariant(collection:String, from:String,
     def compute(src:AnyRef):AnyRef
 }
 
-case class StringNormalizationInvariant(_id:ObjectId, collection:String, from:String, to:String)
+case class StringNormalizationInvariant(@Key("_id") id:ObjectId, collection:String, from:String, to:String)
         extends ScalarFieldToScalarFieldInvariant(collection, from, to) {
     override def compute(src:AnyRef):AnyRef = src.toString.toLowerCase
 }
 
-class InvariantDAO(val db:MongoDB) extends SalatDAO[Invariant,ObjectId](db("invariants"))
+class InvariantDAO(val db:MongoDB) {
+    val collection = db("invariants")
+    val salat = new SalatDAO[Invariant,ObjectId](collection) {}
+    val mlp = MongoLockingPool(collection)
+
+    def all = salat.find(MongoDBObject.empty).toList
+
+    def prospect(implicit by:LockerIdentity):Option[Invariant] =
+        mlp.lockOne().map( salat._grater.asObject(_) )
+    def claim(invariant:Invariant)(implicit by:LockerIdentity) =
+        mlp.relock(salat._grater.asDBObject(invariant))
+}

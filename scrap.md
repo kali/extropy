@@ -70,4 +70,18 @@ Proxy workflow
 - ProxyTCPManager actor: listens incoming TCP connection, and creates a ProxyPipeline for each incoming connection
 - ProxyPipeline creates FrontendConnectionActor and BackendConnectionActor
 
+Worker
+======
 
+Overseer
+-------
+- Overseer actor holds the Agent
+- Overseer use a scheduler to wake itself up
+- on a Ping, overseer look for un-handled invariants and spawn Foreman to handle them
+- once in a while, perform some fast cleanup on invariant and agents (cleanup dead ones, bless new ones) (sync or in a future)
+
+Foreman
+-------
+- responsible for an Invariant
+- use a ping to refresh its lock on the invariant
+- commit suicide if the invariant no longer exists
