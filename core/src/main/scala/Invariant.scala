@@ -14,11 +14,14 @@ import scala.concurrent.duration._
 
 import MongoLockingPool.LockerIdentity
 
+import models.MongoLock
+
 @Salat
 abstract class Invariant {
     def id:ObjectId
     def monitoredCollections:List[String]
     def alterWrite(op:Change):Change
+    def emlp:Option[MongoLock]
 }
 
 abstract class SameDocumentInvariant(collection:String) extends Invariant {
@@ -79,7 +82,7 @@ abstract class ScalarFieldToScalarFieldInvariant(collection:String, from:String,
     def compute(src:AnyRef):AnyRef
 }
 
-case class StringNormalizationInvariant(@Key("_id") id:ObjectId, collection:String, from:String, to:String)
+case class StringNormalizationInvariant(@Key("_id") id:ObjectId, collection:String, from:String, to:String, emlp:Option[MongoLock]=None)
         extends ScalarFieldToScalarFieldInvariant(collection, from, to) {
     override def compute(src:AnyRef):AnyRef = src.toString.toLowerCase
 }

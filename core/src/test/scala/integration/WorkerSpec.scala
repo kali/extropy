@@ -56,7 +56,12 @@ class WorkerSpec extends FlatSpec with ShouldMatchers with MongodbTemporary with
         implicit val _locker = LockerIdentity(id.toString)
         val locked1 = extropy.invariantDAO.prospect.get
         val foreman = system.actorOf(Foreman.props(extropy, locked1, _locker))
-        Thread.sleep(2*extropy.foremanHeartBeat.toMillis)
+        extropy.invariantDAO.salat.findOneByID(locked1.id).get.emlp.get.until.getTime should not
+                 be >(locked1.emlp.get.until.getTime + 500)
+        eventually {
+            extropy.invariantDAO.salat.findOneByID(locked1.id).get.emlp.get.until.getTime should
+                 be >(locked1.emlp.get.until.getTime + 500)
+        }
     }
 
 }
