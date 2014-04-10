@@ -44,15 +44,20 @@ object Foreman {
         Props(classOf[Foreman], extropy, invariant, locker)
 }
 
-class Foreman(extropy:BaseExtropyContext, invariant:Invariant, implicit val locker:LockerIdentity) extends Actor {
+class Foreman(extropy:BaseExtropyContext, var invariant:Invariant, implicit val locker:LockerIdentity) extends Actor {
     object Ping
     val pings = context.system.scheduler.schedule(0 milliseconds, extropy.foremanHeartBeat,
                     self, Ping)(executor=context.system.dispatcher)
 
     val log = Logging(context.system, this)
-    log.info("Claiming " + invariant)
-
     def receive = {
-        case Ping =>
+        case Ping => try {
+            invariant = extropy.invariantDAO.claim(invariant)
+        } catch {
+            case e:IllegalStateException => {
+                println("suicide after failure to relock my invariant: " + invariant)
+                self ! PoisonPill
+            }
+        }
     }
 }

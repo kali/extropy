@@ -10,6 +10,8 @@ import com.novus.salat.annotations._
 import com.novus.salat.dao._
 import com.novus.salat.global._
 
+import scala.concurrent.duration._
+
 import MongoLockingPool.LockerIdentity
 
 @Salat
@@ -82,15 +84,15 @@ case class StringNormalizationInvariant(@Key("_id") id:ObjectId, collection:Stri
     override def compute(src:AnyRef):AnyRef = src.toString.toLowerCase
 }
 
-class InvariantDAO(val db:MongoDB) {
+class InvariantDAO(val db:MongoDB, val lockDuration:FiniteDuration) {
     val collection = db("invariants")
     val salat = new SalatDAO[Invariant,ObjectId](collection) {}
-    val mlp = MongoLockingPool(collection)
+    val mlp = MongoLockingPool(collection, lockDuration)
 
     def all = salat.find(MongoDBObject.empty).toList
 
     def prospect(implicit by:LockerIdentity):Option[Invariant] =
         mlp.lockOne().map( salat._grater.asObject(_) )
-    def claim(invariant:Invariant)(implicit by:LockerIdentity) =
-        mlp.relock(salat._grater.asDBObject(invariant))
+    def claim(invariant:Invariant)(implicit by:LockerIdentity):Invariant =
+        salat._grater.asObject(mlp.relock(salat._grater.asDBObject(invariant)))
 }

@@ -12,6 +12,7 @@ trait BaseExtropyContext {
 
     def overseerHeartBeat = 1 second
     def foremanHeartBeat = 1 second
+    def invariantLockDuration = foremanHeartBeat * 10
 
     def agentDAO:ExtropyAgentDescriptionDAO
     def invariantDAO:InvariantDAO
@@ -22,7 +23,7 @@ trait BaseExtropyContext {
 case class Extropy(val extropyMongoUrl:String, val extropyDatabaseName:String="extropy") extends BaseExtropyContext {
     val extropyMongoClient = MongoClient(MongoClientURI(extropyMongoUrl))
     val agentDAO = new ExtropyAgentDescriptionDAO(extropyMongoClient(extropyDatabaseName), pingValidity)
-    val invariantDAO = new InvariantDAO(extropyMongoClient(extropyDatabaseName))
+    val invariantDAO = new InvariantDAO(extropyMongoClient(extropyDatabaseName), invariantLockDuration)
 }
 
 case class DynamicConfiguration(version:Long, invariants:List[Invariant])

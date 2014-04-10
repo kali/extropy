@@ -85,10 +85,14 @@ case class MongoLockingPool(
         ).orElse(throw new IllegalStateException("failure to release (not owned or late or inexistent): " + lock))
     }
 
-    def relock(lock:DBObject,timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity) {
+    def relock(lock:DBObject,timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity):DBObject =
         collection.findAndModify(
             query= ownedLockQueryCriteria(lock),
-            update= lockUpdate(timeout)
-        ).orElse(throw new IllegalStateException("failure to relock (not owned or late or inexistent): " + lock))
-    }
+            fields= MongoDBObject.empty,
+            sort= MongoDBObject.empty,
+            remove= false,
+            update= lockUpdate(timeout),
+            returnNew= true,
+            upsert= false
+        ).getOrElse(throw new IllegalStateException("failure to relock (not owned or late or inexistent): " + lock))
 }
