@@ -34,6 +34,7 @@ trait MongodbTemporary extends BeforeAndAfterAll { this: Suite =>
                                 .build
                 mongoExecutable = runtime.prepare(config)
                 mongoProcess = mongoExecutable.start
+                Thread.sleep(1000)
           }
           mongoBackendClient = MongoConnection("127.0.0.1", mongoBackendPort)
     }

@@ -19,20 +19,25 @@ trait MongodbTemporary extends BeforeAndAfterAll { this: Suite =>
     var mongoBackendPort:Int = 0
 
     override def beforeAll() {
-        val runtimeConfig = new RuntimeConfigBuilder()
-                                .defaults(Command.MongoD)
-                                .processOutput(ProcessOutput.getDefaultInstanceSilent())
+        System.getenv("MONGO_FOR_TEST") match {
+            case a:String => mongoBackendPort = a.split(":").last.toInt
+            case null =>
+                val runtimeConfig = new RuntimeConfigBuilder()
+                                        .defaults(Command.MongoD)
+                                        .processOutput(ProcessOutput.getDefaultInstanceSilent())
+                                        .build
+                val runtime = MongodStarter.getInstance(runtimeConfig)
+                mongoBackendPort = Network.getFreeServerPort
+                val config = new MongodConfigBuilder()
+                                .net(new Net(mongoBackendPort, false))
+                                .version(Version.Main.PRODUCTION)
                                 .build
-        val runtime = MongodStarter.getInstance(runtimeConfig)
-        mongoBackendPort = Network.getFreeServerPort
-        val config = new MongodConfigBuilder()
-                        .net(new Net(mongoBackendPort, false))
-                        .version(Version.Main.PRODUCTION)
-                        .build
-        mongoExecutable = runtime.prepare(config)
-        mongoProcess = mongoExecutable.start
+                mongoExecutable = runtime.prepare(config)
+                mongoProcess = mongoExecutable.start
+                Thread.sleep(1000)
+        }
         mongoBackendClient = MongoConnection("127.0.0.1", mongoBackendPort);
-//        println("mongo backend running on port " + mongoBackendPort)
+        //        println("mongo backend running on port " + mongoBackendPort)
     }
 
     override def afterAll() {
@@ -46,6 +51,7 @@ class MongodbTemporarySpec extends FlatSpec with MongodbTemporary with ShouldMat
     behavior of "A temporary mongo"
 
     it should "be running" in {
+        mongoBackendClient("test")("col").drop()
         mongoBackendClient("test")("col").save(MongoDBObject("a" -> 2))
         mongoBackendClient("test")("col").count() should be(1)
     }
