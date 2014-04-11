@@ -1,10 +1,12 @@
 package org.zoy.kali.extropy
 
-import akka.actor.{ ActorSystem, Actor, ActorRef, Props, Terminated, PoisonPill }
+import akka.actor.{ ActorSystem, Actor, ActorRef, Props, Terminated, PoisonPill, FSM }
 import akka.event.Logging
+import akka.pattern.pipe
 
 import scala.concurrent.duration._
 import com.mongodb.casbah.Imports._
+import scala.concurrent.ExecutionContext.Implicits.global
 import mongoutils._
 
 object Overseer {
@@ -50,14 +52,36 @@ class Foreman(extropy:BaseExtropyContext, var invariant:Invariant, implicit val 
                     self, Ping)(executor=context.system.dispatcher)
 
     val log = Logging(context.system, this)
+    var expectedVersion = 0L
+
+    import InvariantStatus._
     def receive = {
         case Ping => try {
             invariant = extropy.invariantDAO.claim(invariant)
+            invariant.status match {
+                case Created =>
+                    extropy.invariantDAO.switchInvariantTo(invariant, Presync)
+                    expectedVersion = extropy.agentDAO.bumpConfigurationVersion
+                case Presync =>
+                    if(extropy.agentDAO.readMinimumConfigurationVersion >= expectedVersion) {
+                        extropy.invariantDAO.switchInvariantTo(invariant, Sync)
+                        invariant.rule.activeSync(extropy)
+                        extropy.invariantDAO.switchInvariantTo(invariant, Prerun)
+                        expectedVersion = extropy.agentDAO.bumpConfigurationVersion
+                    }
+                case Sync    => // FIXME: report on progress, if possible
+                case Prerun  =>
+                    if(extropy.agentDAO.readMinimumConfigurationVersion >= expectedVersion)
+                        extropy.invariantDAO.switchInvariantTo(invariant, Run)
+                case Run     =>
+                case Error   =>
+            }
         } catch {
             case e:IllegalStateException => {
                 println("suicide after failure to relock my invariant: " + invariant)
                 self ! PoisonPill
             }
         }
+
     }
 }

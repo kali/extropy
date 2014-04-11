@@ -18,9 +18,11 @@ trait BaseExtropyContext {
     def invariantDAO:InvariantDAO
 
     def pullConfiguration = DynamicConfiguration(agentDAO.readConfigurationVersion, invariantDAO.all)
+
+    def payloadMongo:MongoClient
 }
 
-case class Extropy(val extropyDatabase:MongoDB) extends BaseExtropyContext {
+case class Extropy(val extropyDatabase:MongoDB, payloadMongo:MongoClient) extends BaseExtropyContext {
     val agentDAO = new ExtropyAgentDescriptionDAO(extropyDatabase, agentLockDuration)
     val invariantDAO = new InvariantDAO(extropyDatabase, invariantLockDuration)
 }

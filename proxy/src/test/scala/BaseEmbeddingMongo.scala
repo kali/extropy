@@ -15,7 +15,7 @@ trait MongodbTemporary extends BeforeAndAfterAll { this: Suite =>
 
     var mongoExecutable:MongodExecutable = null
     var mongoProcess:MongodProcess = null
-    var mongoBackendClient:MongoConnection = null
+    var mongoBackendClient:MongoClient = null
     var mongoBackendPort:Int = 0
 
     override def beforeAll() {
@@ -36,7 +36,7 @@ trait MongodbTemporary extends BeforeAndAfterAll { this: Suite =>
                 mongoProcess = mongoExecutable.start
                 Thread.sleep(1000)
         }
-        mongoBackendClient = MongoConnection("127.0.0.1", mongoBackendPort);
+        mongoBackendClient = MongoClient("127.0.0.1", mongoBackendPort);
         //        println("mongo backend running on port " + mongoBackendPort)
     }
 

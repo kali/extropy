@@ -15,6 +15,21 @@ import scala.concurrent.Await
 
 import mongoutils._
 
+    case class RemoteControledSyncRule(label:String) extends Rule {
+        import mongo._
+        def alterWrite(op:Change) = op
+        def monitoredCollections = List()
+        def activeSync(extropy:BaseExtropyContext) {
+            RemoteControledSyncRule.latch.set(1)
+            while(RemoteControledSyncRule.latch.get() < 2)
+                Thread.sleep(10)
+        }
+    }
+    object RemoteControledSyncRule {
+        val latch = new java.util.concurrent.atomic.AtomicInteger(0)
+    }
+
+
 class WorkerSpec extends TestKit(ActorSystem("workerspec"))
     with FlatSpecLike with ShouldMatchers with MongodbTemporary with Eventually {
 
@@ -22,15 +37,6 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         PatienceConfig(timeout = scaled(Span(2, Seconds)), interval = scaled(Span(50, Millis)))
 
     behavior of "An overseer"
-
-    def withExtropy(testCode: (String, BaseExtropyContext) => Any) {
-        val id = System.currentTimeMillis.toString
-        val dbName = s"extropy-spec-$id"
-        val extropy = Extropy(mongoBackendClient(dbName))
-        // try {
-            testCode(id, extropy)
-        //}
-    }
 
     it should "manifest itelf as an agent" in withExtropy { (id,extropy) =>
         val name = "overseer-" + System.currentTimeMillis
@@ -42,9 +48,8 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
     it should "start a foreman to handle an invariant" in withExtropy { (id,extropy) =>
         val name = "overseer-" + id
         val overseer = system.actorOf(Overseer.props(extropy, name), name)
-        val invariant = Invariant(StringNormalizationRule("test.users", "name", "normName"))
+        val invariant = Invariant(RemoteControledSyncRule("foo"))
         extropy.invariantDAO.salat.save(invariant)
-        extropy.invariantDAO.mlp.bless(invariant._id)
         extropy.invariantDAO.collection.size should be(1)
         eventually {
             Await.result(
@@ -55,10 +60,9 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
 
     behavior of "A foreman"
 
-    it should "maintain its claim on an invariant" taggedAs(Tag("r")) in withExtropy { (id,extropy) =>
-        val invariant = Invariant(StringNormalizationRule("test.users", "name", "normName"))
+    it should "maintain its claim on an invariant" in withExtropy { (id,extropy) =>
+        val invariant = Invariant(RemoteControledSyncRule("foo"))
         extropy.invariantDAO.salat.save(invariant)
-        extropy.invariantDAO.mlp.bless(invariant._id)
         implicit val _locker = LockerIdentity(id.toString)
         val locked1 = extropy.invariantDAO.prospect.get
         val foreman = system.actorOf(Foreman.props(extropy, locked1, _locker))
@@ -68,6 +72,64 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
             extropy.invariantDAO.salat.findOneByID(locked1._id).get.emlp.until.getTime should
                  be >(locked1.emlp.until.getTime + 500)
         }
+    }
+
+    it should "switch its invariant from Created to Presync" taggedAs(Tag("r")) in withExtropy { (id,extropy) =>
+        val invariant = Invariant(RemoteControledSyncRule("foo"))
+        extropy.invariantDAO.salat.save(invariant)
+        implicit val _locker = LockerIdentity(id.toString)
+        val locked1 = extropy.invariantDAO.prospect.get
+        val foreman = system.actorOf(Foreman.props(extropy, locked1, _locker))
+        extropy.agentDAO.readConfigurationVersion should be(0)
+        eventually {
+            extropy.invariantDAO.salat.findOneByID(locked1._id).get.status should be(InvariantStatus.Presync)
+        }
+        eventually {
+            extropy.agentDAO.readConfigurationVersion should be(1)
+        }
+    }
+
+    behavior of "A worker"
+
+    it should "bring an invariant from Created to Run, through Sync" in withExtropy { (id,extropy) =>
+        val name = "overseer-" + id
+        val overseer = system.actorOf(Overseer.props(extropy, name), name)
+        val otherAgent = system.actorOf(ExtropyAgent.props("agent-" + id, extropy, testActor))
+        val invariant = Invariant(RemoteControledSyncRule("foo"))
+        extropy.agentDAO.readConfigurationVersion should be(0)
+        eventually {
+            extropy.agentDAO.readMinimumConfigurationVersion should be(0)
+        }
+        extropy.invariantDAO.salat.save(invariant)
+        var config = expectMsgClass(classOf[DynamicConfiguration])
+        extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Presync)
+        Thread.sleep(3000)
+        extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Presync)
+        otherAgent ! AckDynamicConfiguration(config)
+        eventually {
+            extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Sync)
+        }
+        RemoteControledSyncRule.latch.get() should be(1)
+        RemoteControledSyncRule.latch.set(2)
+        eventually {
+            extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Prerun)
+        }
+        config = expectMsgClass(classOf[DynamicConfiguration])
+        otherAgent ! AckDynamicConfiguration(config)
+        eventually {
+            extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Run)
+        }
+    }
+
+    // paraphernalia
+
+    def withExtropy(testCode: (String, BaseExtropyContext) => Any) {
+        val id = System.currentTimeMillis.toString
+        val dbName = s"extropy-spec-$id"
+        val extropy = Extropy(mongoBackendClient(dbName), mongoBackendClient)
+        // try {
+            testCode(id, extropy)
+        //}
     }
 
     override def afterAll {

@@ -24,8 +24,8 @@ class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration
 
     val agentMLP = MongoLockingPool(collection, pingValidity)
 
-    def register(id:String) {
-        agentMLP.insertLocked(MongoDBObject("_id" -> id))(LockerIdentity(id))
+    def register(id:String, configurationVersion:Long) {
+        agentMLP.insertLocked(MongoDBObject("_id" -> id, "configurationVersion" -> configurationVersion))(LockerIdentity(id))
     }
 
     def ping(id:String, validity:FiniteDuration) {
@@ -48,6 +48,10 @@ class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration
             query=MongoDBObject("_id" -> "version"),
             update=MongoDBObject("$inc" -> MongoDBObject("value" -> 1L)),
             sort=null, fields=null, upsert=true, remove=false, returnNew=true).flatMap( _.getAs[Long]("value") ).get
+    def readMinimumConfigurationVersion:Long = {
+        val all = collection.distinct("configurationVersion").map( _.toString.toLong )
+        if(all.isEmpty) -1L else all.min
+    }
 }
 
 class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:ActorRef) extends Actor {
@@ -88,7 +92,7 @@ class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:Act
 
 object ExtropyAgent {
     def props(id:String, extropy:BaseExtropyContext, client:ActorRef) = {
-        extropy.agentDAO.register(id)
+        extropy.agentDAO.register(id, extropy.agentDAO.readConfigurationVersion)
         Props(classOf[ExtropyAgent], id, extropy, client)
     }
 }

@@ -21,7 +21,7 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
     def withExtropy(testCode:((BaseExtropyContext,String) => Any)) {
         val id = System.currentTimeMillis.toString
         val dbName = s"extropy-spec-$id"
-        val extropy = Extropy(mongoBackendClient(dbName))
+        val extropy = Extropy(mongoBackendClient(dbName), mongoBackendClient)
         try {
             extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule(s"$id.users", "name", "normName")) )
             testCode(extropy, id)

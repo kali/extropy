@@ -14,16 +14,27 @@ import scala.concurrent.duration._
 
 import mongoutils._
 
-case class Invariant(_id:ObjectId, rule:StringNormalizationRule, emlp:MongoLock) {
-}
+case class Invariant(   _id:ObjectId, rule:Rule, emlp:MongoLock,
+                        status:InvariantStatus.Value=InvariantStatus.Created)
+
 object Invariant {
-    def apply(rule:StringNormalizationRule) = new Invariant(new ObjectId(), rule, MongoLock.empty)
+    def apply(rule:Rule) = new Invariant(new ObjectId(), rule, MongoLock.empty)
+}
+
+object InvariantStatus extends Enumeration {
+    val Created = Value("created")
+    val Presync = Value("presync")          // want to sync, worker ask proxies to switch
+    val Sync = Value("sync")                // all proxies are "sync", foreman syncs actively
+    val Prerun = Value("prerun")            // all proxies are required to switch ro run
+    val Run = Value("run")                  // all proxies are "run"
+    val Error = Value("error")
 }
 
 @Salat
 abstract class Rule {
     def alterWrite(op:Change):Change
     def monitoredCollections:List[String]
+    def activeSync(extropy:BaseExtropyContext):Unit
 }
 
 @Salat
@@ -55,6 +66,10 @@ abstract class SameDocumentRule(collection:String) extends Rule {
         )
         case delete:DeleteChange => delete
         case _ => throw new NotImplementedError
+    }
+
+    def activeSync(extropy:BaseExtropyContext) {
+        throw new NotImplementedError
     }
 }
 
@@ -102,4 +117,9 @@ class InvariantDAO(val db:MongoDB, val lockDuration:FiniteDuration) {
         mlp.lockOne().map( salat._grater.asObject(_) )
     def claim(invariant:Invariant)(implicit by:LockerIdentity):Invariant =
         salat._grater.asObject(mlp.relock(salat._grater.asDBObject(invariant)))
+
+    def switchInvariantTo(invariant:Invariant, status:InvariantStatus.Value) {
+        collection.update(MongoDBObject("_id" -> invariant._id),
+            MongoDBObject("$set" -> MongoDBObject("status" -> status.toString)))
+    }
 }

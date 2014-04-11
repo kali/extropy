@@ -32,7 +32,7 @@ class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLik
                 be(Some(MongoDBObject("ok" -> 1, "version" -> next )))
         }
 
-        extropy.agentDAO.collection.size should be(1)
+        eventually { extropy.agentDAO.collection.size should be(1) }
         extropy.agentDAO.collection.findOne(MongoDBObject.empty).get.getAs[Long]("configurationVersion").get should be(next)
     }
 
@@ -42,7 +42,7 @@ class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLik
     def withProxiedClient(testCode:(BaseExtropyContext, MongoClient) => Any) {
         val id = System.currentTimeMillis.toString
         val dbName = s"extropy-spec-$id"
-        val extropy = Extropy(mongoBackendClient(dbName))
+        val extropy = Extropy(mongoBackendClient(dbName), mongoBackendClient)
 
         val port = de.flapdoodle.embed.process.runtime.Network.getFreeServerPort
 
@@ -52,15 +52,15 @@ class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLik
             new InetSocketAddress("127.0.0.1", mongoBackendPort)
         ), "proxy")
 
-        val mongoClient = MongoClient("127.0.0.1", port)
-        (1 to 20).find { i =>
+        (1 to 30).find { i =>
             try {
                 Thread.sleep(100)
-                mongoClient.databaseNames
+                new java.net.Socket("127.0.0.1", port)
                 true
-            } catch { case _:Throwable => false }
+            } catch { case e:Throwable => false }
         }
 
+        val mongoClient = MongoClient("127.0.0.1", port)
         try {
             testCode(extropy, mongoClient)
         } finally {
@@ -68,5 +68,5 @@ class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLik
         }
     }
 
-    override def afterAll { TestKit.shutdownActorSystem(system) ; super.afterAll }
+    override def afterAll { TestKit.shutdownActorSystem(system) ; Thread.sleep(500); super.afterAll }
 }

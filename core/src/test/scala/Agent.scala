@@ -50,6 +50,7 @@ class AgentSpec extends TestKit(ActorSystem("agentspec"))
             val agentDoc = extropy.agentDAO.salat.findOne(MongoDBObject("_id" -> id)).get
             agentDoc.configurationVersion should be(12)
         }
+        extropy.agentDAO.readMinimumConfigurationVersion should be(12L)
     }
 
     implicit override val patienceConfig =
@@ -58,7 +59,7 @@ class AgentSpec extends TestKit(ActorSystem("agentspec"))
     def withExtropy(testCode: (String, BaseExtropyContext) => Any) {
         val id = System.currentTimeMillis.toString
         val dbName = s"extropy-spec-$id"
-        val extropy = Extropy(mongoBackendClient(dbName))
+        val extropy = Extropy(mongoBackendClient(dbName), mongoBackendClient)
         try {
             testCode(id, extropy)
         } finally {
