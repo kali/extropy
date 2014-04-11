@@ -18,44 +18,49 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
 
     behavior of "An extropy proxy"
 
-    var extropy:Extropy = null
-    override def beforeAll {
-        super.beforeAll
-        extropy = Extropy(s"mongodb://localhost:$mongoBackendPort")
-        extropy.invariantDAO.salat.save(
-            StringNormalizationInvariant(new ObjectId(), "test.users", "name", "normName")
-        )
+    def withExtropy(testCode:((BaseExtropyContext,String) => Any)) {
+        val id = System.currentTimeMillis.toString
+        val dbName = s"db-$id"
+        val extropy = Extropy(s"mongodb://localhost:$mongoBackendPort", dbName)
+        try {
+            extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule(s"$id.users", "name", "normName")) )
+            testCode(extropy, id)
+        }
+        finally {
+            extropy.extropyMongoClient.dropDatabase(dbName)
+            extropy.extropyMongoClient.close
+        }
     }
 
-    it should "leave read messages alone" in {
+    it should "leave read messages alone" in withExtropy { (extropy,id) =>
         val proxy = system.actorOf(ExtropyProxy.props(extropy))
         val original = TargettedMessage(Server,
-                    CraftedMessage(0, 0, OpQuery(0, "test.users", 12, 12, MongoDBObject("name" -> "Kali"), None))
+                    CraftedMessage(0, 0, OpQuery(0, s"$id.users", 12, 12, MongoDBObject("name" -> "Kali"), None))
                 )
         proxy ! original
         val transformed = expectMsgClass(classOf[TargettedMessage])
         transformed should be(original)
     }
 
-    it should "leave messages on an arbitrary collection alone" in {
+    it should "leave messages on an arbitrary collection alone" in withExtropy { (extropy,id) =>
         val proxy = system.actorOf(ExtropyProxy.props(extropy))
         val original = TargettedMessage(Server,
-                    CraftedMessage(0, 0, OpInsert(0, "test.not-users", Stream(MongoDBObject("name" -> "Kali"))))
+                    CraftedMessage(0, 0, OpInsert(0, s"$id.not-users", Stream(MongoDBObject("name" -> "Kali"))))
                 )
         proxy ! original
         val transformed = expectMsgClass(classOf[TargettedMessage])
         transformed should be(original)
     }
 
-    it should "transform messages on the right collection" in {
+    it should "transform messages on the right collection" in withExtropy { (extropy,id) =>
         val proxy = system.actorOf(ExtropyProxy.props(extropy))
         proxy ! TargettedMessage(Server,
-                    CraftedMessage(0, 0, OpInsert(0, "test.users", Stream(MongoDBObject("name" -> "Kali"))))
+                    CraftedMessage(0, 0, OpInsert(0, s"$id.users", Stream(MongoDBObject("name" -> "Kali"))))
                 )
         val transformed = expectMsgClass(classOf[TargettedMessage])
         transformed.direction should be(Server)
         val op:OpInsert = transformed.message.op.asInstanceOf[OpInsert]
-        op.fullCollectionName should be("test.users")
+        op.fullCollectionName should be(s"$id.users")
         op.documents.size should be(1)
         op.documents.head should be(MongoDBObject("name" -> "Kali", "normName" -> "kali"))
     }

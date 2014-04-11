@@ -23,6 +23,9 @@ object MongoUtils {
 
 case class LockerIdentity(id:AnyRef)
 case class MongoLock(@Key("lu") until:Date, @Key("lb") locker:Option[LockerIdentity])
+object MongoLock {
+    val empty = MongoLock(new Date(0), None)
+}
 
 case class MongoLockingPool(
     collection:MongoCollection,

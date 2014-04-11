@@ -14,15 +14,20 @@ import scala.concurrent.duration._
 
 import mongoutils._
 
-@Salat
-abstract class Invariant {
-    def id:ObjectId
-    def monitoredCollections:List[String]
-    def alterWrite(op:Change):Change
-    def emlp:Option[MongoLock]
+case class Invariant(_id:ObjectId, rule:StringNormalizationRule, emlp:MongoLock) {
+}
+object Invariant {
+    def apply(rule:StringNormalizationRule) = new Invariant(new ObjectId(), rule, MongoLock.empty)
 }
 
-abstract class SameDocumentInvariant(collection:String) extends Invariant {
+@Salat
+abstract class Rule {
+    def alterWrite(op:Change):Change
+    def monitoredCollections:List[String]
+}
+
+@Salat
+abstract class SameDocumentRule(collection:String) extends Rule {
     val computeOneInMongo:(AnyRef=>AnyRef) = null
     val computeOneLocally:(BSONObject=>AnyRef) = null
     val monitoredCollections = List(collection)
@@ -53,8 +58,9 @@ abstract class SameDocumentInvariant(collection:String) extends Invariant {
     }
 }
 
-abstract class ScalarFieldToScalarFieldInvariant(collection:String, from:String, to:String)
-            extends SameDocumentInvariant(collection) {
+@Salat
+abstract class ScalarFieldToScalarFieldRule(collection:String, from:String, to:String)
+            extends SameDocumentRule(collection) {
     def pullIdAndSource(id:AnyRef):BSONObject = null
     def sourceFields = Seq(from)
     def targetField = to
@@ -80,8 +86,8 @@ abstract class ScalarFieldToScalarFieldInvariant(collection:String, from:String,
     def compute(src:AnyRef):AnyRef
 }
 
-case class StringNormalizationInvariant(@Key("_id") id:ObjectId, collection:String, from:String, to:String, emlp:Option[MongoLock]=None)
-        extends ScalarFieldToScalarFieldInvariant(collection, from, to) {
+case class StringNormalizationRule(collection:String, from:String, to:String)
+        extends ScalarFieldToScalarFieldRule(collection, from, to) {
     override def compute(src:AnyRef):AnyRef = src.toString.toLowerCase
 }
 

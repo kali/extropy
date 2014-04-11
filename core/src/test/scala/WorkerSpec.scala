@@ -35,32 +35,33 @@ class WorkerSpec extends FlatSpec with ShouldMatchers with MongodbTemporary with
         import ctx._
         val name = "overseer-" + id
         val overseer = system.actorOf(Overseer.props(extropy, name), name)
-        val invariant = StringNormalizationInvariant(new ObjectId(), "test.users", "name", "normName")
+        val invariant = Invariant(StringNormalizationRule("test.users", "name", "normName"))
         extropy.invariantDAO.salat.save(invariant)
-        extropy.invariantDAO.mlp.bless(invariant.id)
+        extropy.invariantDAO.mlp.bless(invariant._id)
         extropy.invariantDAO.collection.size should be(1)
         eventually {
             Await.result(
-                system.actorSelection(s"akka://$id/user/overseer-$id/foreman-${invariant.id}").resolveOne(10 millis),
+                system.actorSelection(s"akka://$id/user/overseer-$id/foreman-${invariant._id}").resolveOne(10 millis),
                 10 millis)
         }
     }
 
     behavior of "A foreman"
 
-    it should "maintain its claim on an invariant" in withExtropy { ctx:TextContext =>
+    it should "maintain its claim on an invariant" taggedAs(Tag("r")) in withExtropy { ctx:TextContext =>
         import ctx._
-        val invariant = StringNormalizationInvariant(new ObjectId(), "test.users", "name", "normName")
+        val invariant = Invariant(StringNormalizationRule("test.users", "name", "normName"))
         extropy.invariantDAO.salat.save(invariant)
-        extropy.invariantDAO.mlp.bless(invariant.id)
+        extropy.invariantDAO.mlp.bless(invariant._id)
+extropy.invariantDAO.collection.foreach { println(_) }
         implicit val _locker = LockerIdentity(id.toString)
         val locked1 = extropy.invariantDAO.prospect.get
         val foreman = system.actorOf(Foreman.props(extropy, locked1, _locker))
-        extropy.invariantDAO.salat.findOneByID(locked1.id).get.emlp.get.until.getTime should not
-                 be >(locked1.emlp.get.until.getTime + 500)
+        extropy.invariantDAO.salat.findOneByID(locked1._id).get.emlp.until.getTime should not
+                 be >(locked1.emlp.until.getTime + 500)
         eventually {
-            extropy.invariantDAO.salat.findOneByID(locked1.id).get.emlp.get.until.getTime should
-                 be >(locked1.emlp.get.until.getTime + 500)
+            extropy.invariantDAO.salat.findOneByID(locked1._id).get.emlp.until.getTime should
+                 be >(locked1.emlp.until.getTime + 500)
         }
     }
 

@@ -29,7 +29,7 @@ class Overseer(extropy:BaseExtropyContext, name:String) extends Actor {
             context.actorSelection("./*") ! PoisonPill
             pings.cancel
         case HeartBeat => extropy.invariantDAO.prospect.foreach { inv =>
-            context.actorOf(Foreman.props(extropy, inv, locker), "foreman-" + inv.id.toString)
+            context.actorOf(Foreman.props(extropy, inv, locker), "foreman-" + inv._id.toString)
         }
     }
 

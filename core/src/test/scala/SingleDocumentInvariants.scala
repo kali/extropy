@@ -14,20 +14,25 @@ import org.zoy.kali.extropy.mongo._
 import com.mongodb.casbah.Imports._
 
 class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSender
-  with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll with MongodbTemporary {
+    with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll with MongodbTemporary {
 
     behavior of "A same-document invariant"
 
-    var extropy:Extropy = null
-    override def beforeAll {
-        super.beforeAll
-        extropy = Extropy(s"mongodb://localhost:$mongoBackendPort")
-        extropy.invariantDAO.salat.save(
-            StringNormalizationInvariant(new ObjectId(), "test.users", "name", "normName")
-        )
+    def withExtropy(testCode:((String, BaseExtropyContext) => Any)) {
+        val id = System.currentTimeMillis.toString
+        val dbName = s"db-$id"
+        val extropy = Extropy(s"mongodb://localhost:$mongoBackendPort", dbName)
+        try {
+            testCode(id, extropy)
+        }
+        finally {
+            extropy.extropyMongoClient.dropDatabase(dbName)
+            extropy.extropyMongoClient.close
+        }
     }
 
-    it should "deal with insert" in {
+    it should "deal with insert" in withExtropy { (id,extropy) =>
+        extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule("test.users", "name", "normName")) )
         val proxy = system.actorOf(ExtropyProxy.props(extropy))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpInsert(0, "test.users", Stream(MongoDBObject("name" -> "Kali"))))
@@ -37,7 +42,8 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
         op.documents.head should be(MongoDBObject("name" -> "Kali", "normName" -> "kali"))
     }
 
-    it should "deal with full body update" in {
+    it should "deal with full body update" in withExtropy { (id, extropy) =>
+        extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule("test.users", "name", "normName")) )
         val proxy = system.actorOf(ExtropyProxy.props(extropy))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpUpdate(0, "test.users", 0, MongoDBObject(), MongoDBObject("name" -> "Kali")))
@@ -47,7 +53,8 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
         op.update should be(MongoDBObject("name" -> "Kali", "normName" -> "kali"))
     }
 
-    it should "deal with modifier update" in {
+    it should "deal with modifier update" in withExtropy { (id, extropy) =>
+        extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule("test.users", "name", "normName")) )
         val proxy = system.actorOf(ExtropyProxy.props(extropy))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpUpdate(0, "test.users", 0, MongoDBObject(),

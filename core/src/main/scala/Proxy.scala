@@ -41,8 +41,8 @@ class ExtropyProxy( extropy:BaseExtropyContext,
             if(mongo.isChange) {
                 val originalChange:Change = mongo.op.asChange
                 val alteredChange:Change = configuration.invariants.foldLeft(originalChange) { (change,inv) =>
-                    if(inv.monitoredCollections.contains(change.writtenCollection))
-                        inv.alterWrite(change)
+                    if(inv.rule.monitoredCollections.contains(change.writtenCollection))
+                        inv.rule.alterWrite(change)
                     else
                         change
                 }
