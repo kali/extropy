@@ -113,9 +113,8 @@ class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAf
         collection.insert(mlp.blessed(MongoDBObject("_id" -> "foo")))
         val lock = mlp.lockOne().get
         Thread.sleep( mlp.defaultTimeout.toMillis * 2 )
-        an [Exception] should be thrownBy {
-            mlp.release(lock)
-        }
+        val thrown = the [Exception] thrownBy mlp.release(lock)
+        thrown.getMessage should include("has expired")
     }
 
     it should "lock and delete on unlock" in {
@@ -148,9 +147,8 @@ class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAf
     it should "prevent relock by another locker" in {
         collection.insert(mlp.blessed(MongoDBObject("_id" -> "foo")))
         val lock = mlp.lockOne().get
-        an [Exception] should be thrownBy {
-            mlp.relock(lock)(LockerIdentity("not me"))
-        }
+        val thrown = the [Exception] thrownBy mlp.relock(lock)(LockerIdentity("not me"))
+        thrown.getMessage should include("not mine")
     }
 
     it should "prevent relock after the timeout" in {

@@ -84,7 +84,7 @@ case class MongoLockingPool(
             collection.findAndModify(ownedLockQueryCriteria(lock), update=recursiveMerge(u, update))
         else
             collection.findAndModify(ownedLockQueryCriteria(lock), u)
-        ).orElse(throw new IllegalStateException("failure to release (not owned or late or inexistent): " + lock))
+        ).orElse(throw new IllegalStateException(s"failure to release $lock in $collection because: ${diagnoseFailure(lock)}"))
     }
 
     def relock(lock:DBObject,timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity):DBObject =
@@ -96,5 +96,27 @@ case class MongoLockingPool(
             update= lockUpdate(timeout),
             returnNew= true,
             upsert= false
-        ).getOrElse(throw new IllegalStateException("failure to relock (not owned or late or inexistent): " + lock))
+        ).getOrElse(throw new IllegalStateException(s"failure to relock $lock in $collection because: ${diagnoseFailure(lock)}"))
+
+    def diagnoseFailure(lock:DBObject)(implicit by:LockerIdentity):String =
+        collection.findOne(MongoDBObject("_id" -> lock.get("_id"))) match {
+            case None => s"no lock found"
+            case Some(other) => other.getAs[DBObject](subfield) match {
+                case None => s"document found, but is unblessed"
+                case Some(blessing) => {
+                    val lu:Option[Date] = blessing.getAs[Date]("lu")
+                    val lb:Option[AnyRef] = blessing.getAs[AnyRef]("lb")
+                    if(lu.isEmpty)
+                        s"lock record has no lu (locked until): $blessing"
+                    else if(lb.isEmpty)
+                        s"lock record has no lb (locked by): $blessing"
+                    else if(lu.get.getTime < System.currentTimeMillis)
+                        s"lock record has expired ${ System.currentTimeMillis - lu.get.getTime }ms ago: $blessing"
+                    else if(lu.get != by.id)
+                        s"lock is not mine (me:$by lock:$lb): $blessing"
+                    else
+                        s"no idea why: $blessing"
+                }
+            }
+        }
 }
