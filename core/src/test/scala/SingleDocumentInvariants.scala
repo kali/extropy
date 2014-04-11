@@ -20,14 +20,11 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
 
     def withExtropy(testCode:((String, BaseExtropyContext) => Any)) {
         val id = System.currentTimeMillis.toString
-        val dbName = s"db-$id"
-        val extropy = Extropy(s"mongodb://localhost:$mongoBackendPort", dbName)
+        val dbName = s"extropy-spec-$id"
+        val extropy = Extropy(mongoBackendClient(dbName))
         try {
             testCode(id, extropy)
-        }
-        finally {
-            extropy.extropyMongoClient.dropDatabase(dbName)
-            extropy.extropyMongoClient.close
+        } finally {
         }
     }
 
@@ -65,5 +62,5 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
         op.update should be(MongoDBObject("$set" -> MongoDBObject("name" -> "Kali", "normName" -> "kali")))
     }
 
-    override def afterAll { super.afterAll; TestKit.shutdownActorSystem(system) }
+    override def afterAll { TestKit.shutdownActorSystem(system) ; super.afterAll }
 }

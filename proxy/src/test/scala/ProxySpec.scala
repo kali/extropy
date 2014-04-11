@@ -4,68 +4,69 @@ import java.net.InetSocketAddress
 
 import org.scalatest._
 import org.scalatest.concurrent.Eventually
+import org.scalatest.time._
 import org.scalatest.matchers.ShouldMatchers
 
 import scala.concurrent.duration._
 
-import akka.actor.{ ActorSystem, Actor, ActorRef, Props }
+import akka.actor.{ ActorSystem, Actor, ActorRef, Props, PoisonPill }
 
 import com.mongodb.casbah.Imports._
+import akka.testkit.{ TestKit, TestActor }
 
-class ProxyServerSpec extends FlatSpec with MongodbTemporary with ShouldMatchers with Eventually {
+class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLike
+        with MongodbTemporary with ShouldMatchers with Eventually {
+
     behavior of "An extropy proxy"
 
-    val system = ActorSystem("extropy-proxy")
-
-    var mongoClient:MongoConnection = null
-    var extropy:Extropy = null
-    var proxy:ActorRef = null
-
-    override def beforeAll {
-        super.beforeAll
-        extropy = Extropy(s"mongodb://localhost:$mongoBackendPort")
-
-        val port = de.flapdoodle.embed.process.runtime.Network.getFreeServerPort
-        extropy.agentDAO.salat.remove(MongoDBObject.empty)
-
-        proxy = system.actorOf(ProxyServer.props(
-            extropy,
-            new InetSocketAddress("127.0.0.1", port),
-            new InetSocketAddress("127.0.0.1", mongoBackendPort)
-        ), "proxy")
-        Thread.sleep(1000)
-        mongoClient = MongoConnection("127.0.0.1", port)
-    }
-
-    it should "be running" in {
-        mongoClient("test")("col").drop
-        mongoClient("test")("col").save(MongoDBObject("a" -> 2))
-        mongoClient("test")("col").count() should be(1)
-    }
-
-    it should "propagate and acknowledge configuration bumps" in {
+    it should "propagate and acknowledge configuration bumps" in withProxiedClient { (extropy, mongoClient) =>
         val db = mongoClient("test")
         val initial = extropy.agentDAO.bumpConfigurationVersion
-        eventually(timeout(2500 millis), interval(100 millis) ) {
+        eventually {
             db("$extropy").findOne(MongoDBObject("configVersion" -> 1)) should
                 be(Some(MongoDBObject("ok" -> 1, "version" -> initial )))
         }
         val next = extropy.agentDAO.bumpConfigurationVersion
-        eventually(timeout(2500 millis), interval(100 millis) ) {
+        eventually {
             db("$extropy").findOne(MongoDBObject("configVersion" -> 1)) should
                 be(Some(MongoDBObject("ok" -> 1, "version" -> next )))
         }
 
-        mongoClient("extropy")("agents").size should be(1)
-        mongoClient("extropy")("agents").findOne(MongoDBObject.empty).get.getAs[Long]("configurationVersion").get should
-            be(next)
+        extropy.agentDAO.collection.size should be(1)
+        extropy.agentDAO.collection.findOne(MongoDBObject.empty).get.getAs[Long]("configurationVersion").get should be(next)
     }
 
-    override def afterAll {
-        mongoClient.close
-        Thread.sleep(500)
-        system.shutdown
-        Thread.sleep(500)
-        super.afterAll
+    implicit override val patienceConfig =
+        PatienceConfig(timeout = scaled(Span(2, Seconds)), interval = scaled(Span(50, Millis)))
+
+    def withProxiedClient(testCode:(BaseExtropyContext, MongoClient) => Any) {
+        val id = System.currentTimeMillis.toString
+        val dbName = s"extropy-spec-$id"
+        val extropy = Extropy(mongoBackendClient(dbName))
+
+        val port = de.flapdoodle.embed.process.runtime.Network.getFreeServerPort
+
+        val proxy = system.actorOf(ProxyServer.props(
+            extropy,
+            new InetSocketAddress("127.0.0.1", port),
+            new InetSocketAddress("127.0.0.1", mongoBackendPort)
+        ), "proxy")
+
+        val mongoClient = MongoClient("127.0.0.1", port)
+        (1 to 20).find { i =>
+            try {
+                Thread.sleep(100)
+                mongoClient.databaseNames
+                true
+            } catch { case _:Throwable => false }
+        }
+
+        try {
+            testCode(extropy, mongoClient)
+        } finally {
+            proxy ! PoisonPill
+        }
     }
+
+    override def afterAll { TestKit.shutdownActorSystem(system) ; super.afterAll }
 }

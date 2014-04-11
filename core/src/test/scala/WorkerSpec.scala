@@ -15,24 +15,31 @@ import scala.concurrent.Await
 
 import mongoutils._
 
-class WorkerSpec extends FlatSpec with ShouldMatchers with MongodbTemporary with Eventually with ExtropyFixture {
+class WorkerSpec extends TestKit(ActorSystem("workerspec"))
+    with FlatSpecLike with ShouldMatchers with MongodbTemporary with Eventually {
 
     implicit override val patienceConfig =
         PatienceConfig(timeout = scaled(Span(2, Seconds)), interval = scaled(Span(50, Millis)))
 
-
     behavior of "An overseer"
 
-    it should "manifest itelf as an agent" in withExtropy { ctx:TextContext =>
-        import ctx._
+    def withExtropy(testCode: (String, BaseExtropyContext) => Any) {
+        val id = System.currentTimeMillis.toString
+        val dbName = s"extropy-spec-$id"
+        val extropy = Extropy(mongoBackendClient(dbName))
+        // try {
+            testCode(id, extropy)
+        //}
+    }
+
+    it should "manifest itelf as an agent" in withExtropy { (id,extropy) =>
         val name = "overseer-" + System.currentTimeMillis
         extropy.agentDAO.collection.size should be(0)
         val overseer = system.actorOf(Overseer.props(extropy, name), name)
         eventually { extropy.agentDAO.collection.size should be(1) }
     }
 
-    it should "start a foreman to handle an invariant" in withExtropy { ctx:TextContext =>
-        import ctx._
+    it should "start a foreman to handle an invariant" in withExtropy { (id,extropy) =>
         val name = "overseer-" + id
         val overseer = system.actorOf(Overseer.props(extropy, name), name)
         val invariant = Invariant(StringNormalizationRule("test.users", "name", "normName"))
@@ -41,19 +48,17 @@ class WorkerSpec extends FlatSpec with ShouldMatchers with MongodbTemporary with
         extropy.invariantDAO.collection.size should be(1)
         eventually {
             Await.result(
-                system.actorSelection(s"akka://$id/user/overseer-$id/foreman-${invariant._id}").resolveOne(10 millis),
+                system.actorSelection(s"akka://workerspec/user/overseer-$id/foreman-${invariant._id}").resolveOne(10 millis),
                 10 millis)
         }
     }
 
     behavior of "A foreman"
 
-    it should "maintain its claim on an invariant" taggedAs(Tag("r")) in withExtropy { ctx:TextContext =>
-        import ctx._
+    it should "maintain its claim on an invariant" taggedAs(Tag("r")) in withExtropy { (id,extropy) =>
         val invariant = Invariant(StringNormalizationRule("test.users", "name", "normName"))
         extropy.invariantDAO.salat.save(invariant)
         extropy.invariantDAO.mlp.bless(invariant._id)
-extropy.invariantDAO.collection.foreach { println(_) }
         implicit val _locker = LockerIdentity(id.toString)
         val locked1 = extropy.invariantDAO.prospect.get
         val foreman = system.actorOf(Foreman.props(extropy, locked1, _locker))
@@ -65,28 +70,9 @@ extropy.invariantDAO.collection.foreach { println(_) }
         }
     }
 
-}
-
-trait ExtropyFixture {
-
-    def mongoBackendPort:Int
-
-    case class TextContext(id:String, extropy:Extropy, system:ActorSystem)
-
-    def withExtropy(testCode: TextContext => Any) {
-        val id = System.currentTimeMillis.toString
-        val dbName = s"db-$id"
-        val system = ActorSystem(id)
-        val extropy = Extropy(s"mongodb://localhost:$mongoBackendPort", dbName)
-        try {
-          testCode(TextContext(id, extropy, system))
-        }
-        finally {
-            system.shutdown
-            system.awaitTermination
-            extropy.extropyMongoClient.dropDatabase(dbName)
-            extropy.extropyMongoClient.close
-        }
+    override def afterAll {
+        TestKit.shutdownActorSystem(system)
+        super.afterAll
     }
 
 }

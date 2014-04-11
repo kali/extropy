@@ -17,7 +17,7 @@ object Boot {
         val listeningTo = new InetSocketAddress("localhost", 27000)
         val id = s"$hostname-$listeningTo"
         val system = ActorSystem("extropy-proxy")
-        val extropy = Extropy("mongodb://infrabox:27017")
+        val extropy = Extropy(MongoClient("mongodb://infrabox:27017")("extropy"))
         val server = system.actorOf(
             ProxyServer.props(  extropy, listeningTo, new InetSocketAddress("infrabox", 27017)
             ), "proxyServer")

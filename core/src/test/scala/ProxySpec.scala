@@ -20,15 +20,13 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
 
     def withExtropy(testCode:((BaseExtropyContext,String) => Any)) {
         val id = System.currentTimeMillis.toString
-        val dbName = s"db-$id"
-        val extropy = Extropy(s"mongodb://localhost:$mongoBackendPort", dbName)
+        val dbName = s"extropy-spec-$id"
+        val extropy = Extropy(mongoBackendClient(dbName))
         try {
             extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule(s"$id.users", "name", "normName")) )
             testCode(extropy, id)
-        }
-        finally {
-            extropy.extropyMongoClient.dropDatabase(dbName)
-            extropy.extropyMongoClient.close
+        } finally {
+            mongoBackendClient.dropDatabase(dbName)
         }
     }
 
@@ -65,5 +63,5 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
         op.documents.head should be(MongoDBObject("name" -> "Kali", "normName" -> "kali"))
     }
 
-    override def afterAll { super.afterAll; TestKit.shutdownActorSystem(system) }
+    override def afterAll { TestKit.shutdownActorSystem(system) ; super.afterAll }
 }
