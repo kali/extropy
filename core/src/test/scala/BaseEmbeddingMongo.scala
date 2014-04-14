@@ -52,6 +52,7 @@ class MongodbTemporarySpec extends FlatSpec with MongodbTemporary with ShouldMat
 
     it should "be running" in {
         mongoBackendClient("test")("col").drop()
+        mongoBackendClient("test")("col").count() should be(0)
         mongoBackendClient("test")("col").save(MongoDBObject("a" -> 2))
         mongoBackendClient("test")("col").count() should be(1)
     }

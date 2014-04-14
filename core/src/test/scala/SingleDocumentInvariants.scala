@@ -62,5 +62,20 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
         op.update should be(MongoDBObject("$set" -> MongoDBObject("name" -> "Kali", "normName" -> "kali")))
     }
 
+    behavior of "A SingleDocumentRule rule"
+
+    it should "fix all existing documents when activeSync is called" taggedAs(Tag("bla")) in withExtropy { (id, extropy) =>
+        val rule = StringNormalizationRule(s"db-$id.users", "name", "normName")
+        (1 to 100).foreach { i =>
+            extropy.payloadMongo(s"db-$id")("users").save( MongoDBObject("name" -> s"Kali-$i") )
+        }
+        rule.activeSync(extropy)
+        extropy.payloadMongo(s"db-$id")("users").foreach { dbo =>
+            dbo.keys should contain("normName")
+            dbo.keys should contain("name")
+            dbo("normName") should be(dbo("name").asInstanceOf[String].toLowerCase)
+        }
+    }
+
     override def afterAll { TestKit.shutdownActorSystem(system) ; super.afterAll }
 }

@@ -39,23 +39,11 @@ abstract class Rule {
 
 @Salat
 abstract class SameDocumentRule(collection:String) extends Rule {
-    val computeOneInMongo:(AnyRef=>AnyRef) = null
     val computeOneLocally:(BSONObject=>AnyRef) = null
     val monitoredCollections = List(collection)
 
     def sourceFields:Seq[String]
     def targetField:String
-
-    def pullIdAndSource(id:AnyRef):BSONObject
-
-    def fixOne(id:AnyRef) {
-        val obj:BSONObject = pullIdAndSource(id)
-        val value:AnyRef = if(computeOneLocally != null)
-                computeOneLocally(obj)
-            else
-                computeOneInMongo(id)
-        obj.put(targetField, value)
-    }
 
     def alterWrite(op:Change):Change = op match {
         case insert:InsertChange => insert.copy(
@@ -69,14 +57,18 @@ abstract class SameDocumentRule(collection:String) extends Rule {
     }
 
     def activeSync(extropy:BaseExtropyContext) {
-        throw new NotImplementedError
+        val actualCollection = extropy.payloadMongo(collection.split('.').head)(collection.split('.').drop(1).mkString("."))
+        val cursor = actualCollection.find().$orderby( MongoDBObject( "_id" -> 1 ) )
+        cursor.option |= com.mongodb.Bytes.QUERYOPTION_NOTIMEOUT
+        cursor.foreach { dbo => fixOne(actualCollection, dbo) }
     }
+
+    def fixOne(col:MongoCollection, dbo:BSONObject)
 }
 
 @Salat
 abstract class ScalarFieldToScalarFieldRule(collection:String, from:String, to:String)
             extends SameDocumentRule(collection) {
-    def pullIdAndSource(id:AnyRef):BSONObject = null
     def sourceFields = Seq(from)
     def targetField = to
     override def alterWrite(op:Change):Change = op match {
@@ -98,6 +90,13 @@ abstract class ScalarFieldToScalarFieldRule(collection:String, from:String, to:S
     override val computeOneLocally:(BSONObject=>AnyRef) = { d:BSONObject =>
         Option(d.asInstanceOf[DBObject].get(from)).map( compute(_) ).getOrElse(null)
     }
+
+    def fixOne(col:MongoCollection, dbo:BSONObject) {
+        val wanted = computeOneLocally(dbo)
+        if(wanted != dbo.get(targetField))
+            col.update(MongoDBObject("_id" -> dbo.get("_id")), MongoDBObject("$set" -> MongoDBObject(targetField -> wanted)))
+    }
+
     def compute(src:AnyRef):AnyRef
 }
 
