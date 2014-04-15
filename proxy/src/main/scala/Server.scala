@@ -11,17 +11,81 @@ import org.bson.BSONObject
 
 import com.mongodb.casbah.Imports._
 
+import org.kohsuke.args4j.{ Option => Args4jOption, CmdLineParser, CmdLineException }
+
+class RunDefinition {
+    @Args4jOption(  name="--payload", aliases=Array("-p"),
+                    usage="""payload mongodb server, defaults to localhost:27017""",
+                    metaVar="host:port")
+    var payloadServer = "localhost:27017"
+
+    @Args4jOption(  name="--extropy", aliases=Array("-e"),
+                    usage="""exproxy mongo database, defaults to <payload-server>/extropy""",
+                    metaVar="host:port/database")
+    var extropyServer = ""
+
+    @Args4jOption(  name="--listen", aliases=Array("-l"),
+                    usage="""where the  proxy should listen to "[ip:]port"""", metaVar="[ip:]port")
+    var listenTo = "127.0.0.1:27000"
+
+    @Args4jOption(name="--noproxy", aliases=Array(), usage="""Start a proxy""")
+    var noListen:Boolean = false
+
+    @Args4jOption(name="--worker", aliases=Array(), usage="Start a worker")
+    var worker:Boolean = true
+
+    lazy val listenHost = if(listenTo.contains(":")) listenTo.replaceAll(":.*","") else "localhost"
+    lazy val listenPort = if(listenTo.contains(":")) listenTo.replaceAll(".*:","").toInt else 27017
+
+    lazy val payloadHost = payloadServer.split(':').head
+    lazy val payloadPort = payloadServer.split(':').last.toInt
+    lazy val payloadMongo = MongoClient(payloadHost, payloadPort)
+
+    lazy val extropyDatabase = if(extropyServer == "" || !extropyServer.contains("/")) "extropy" else extropyServer.split("/").last
+    lazy val extropyHostAndPort = if(extropyServer.contains("/")) extropyServer.replaceAll("/.*", "") else payloadServer
+    lazy val extropyHost = extropyHostAndPort.split(':').head
+    lazy val extropyPort = extropyHostAndPort.split(':').last.toInt
+
+    lazy val extropyMongo = if(payloadServer == extropyServer)
+        payloadMongo
+    else
+        MongoClient(extropyHost, extropyPort)
+
+    def run {
+        val system = ActorSystem("extropy-proxy")
+        Runtime.getRuntime.addShutdownHook(new Thread() {
+            override def run() {
+                system.shutdown()
+                System.err.println("Shutdown, awaiting akka system termination")
+                system.awaitTermination()
+            }
+        })
+
+        val extropy = Extropy(extropyMongo(extropyDatabase), payloadMongo)
+
+        if(worker) {
+            system.actorOf(Overseer.props(extropy, extropy.hostname.replace(".", "-")), "overseer")
+        }
+        if(!noListen) {
+            system.actorOf(
+                ProxyServer.props(extropy, new InetSocketAddress(listenHost, listenPort),
+                    new InetSocketAddress(payloadHost, payloadPort)), "proxyListener"
+            )
+        }
+    }
+}
+
 object Boot {
     def main(args:Array[String]) {
-        val hostname = java.net.InetAddress.getLocalHost.getHostName
-        val listeningTo = new InetSocketAddress("localhost", 27000)
-        val id = s"$hostname-$listeningTo"
-        val system = ActorSystem("extropy-proxy")
-        val mongo = MongoClient("mongodb://infrabox:27017")
-        val extropy = Extropy(mongo("extropy"), mongo)
-        val server = system.actorOf(
-            ProxyServer.props(  extropy, listeningTo, new InetSocketAddress("infrabox", 27017)
-            ), "proxyServer")
+        val definition = new RunDefinition
+        val parser = new CmdLineParser(definition)
+        try {
+            parser.parseArgument(args:_*)
+            definition.run
+        } catch { case e:Throwable =>
+            System.err.println(e.getMessage)
+            parser.printUsage(System.err)
+        }
     }
 }
 
@@ -42,7 +106,7 @@ class ProxyServer(val extropy:BaseExtropyContext, val bind:InetSocketAddress, va
     log.info(s"Setup proxy from $bind to $send")
 
     var configuration = extropy.pullConfiguration
-    val agent = context.actorOf(ExtropyAgent.props(extropy.hostname + "/" + bind.toString, extropy, self), "agent")
+    val agent = context.actorOf(ExtropyAgent.props("proxy-" + extropy.hostname + "/" + bind.toString, extropy, self), "agent")
 
     import scala.collection.mutable.Set
     val pendingAcknowledgement:Set[ActorRef] = Set()

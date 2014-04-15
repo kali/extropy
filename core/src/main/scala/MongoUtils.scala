@@ -65,6 +65,10 @@ case class MongoLockingPool(
             update = if(updater!=null) recursiveMerge(lockUpdate(timeout), updater) else lockUpdate(timeout)
         )
 
+    def cleanupOldLocks {
+        collection.remove(MongoDBObject( s"$subfield.lu" -> MongoDBObject("$lt" -> new Date()) ))
+    }
+
     def insertLocked(doc:DBObject, timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity) {
         collection.insert(recursiveMerge(doc, MongoDBObject(subfield ->
             MongoDBObject("lb" -> by.id, "lu" -> new Date(timeout.fromNow.time.toMillis))

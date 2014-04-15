@@ -25,6 +25,7 @@ class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration
     val agentMLP = MongoLockingPool(collection, pingValidity)
 
     def register(id:String, configurationVersion:Long) {
+        agentMLP.cleanupOldLocks
         agentMLP.insertLocked(MongoDBObject("_id" -> id, "configurationVersion" -> configurationVersion))(LockerIdentity(id))
     }
 
