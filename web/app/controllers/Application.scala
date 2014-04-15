@@ -10,7 +10,17 @@ import play.api.data.Forms._
 
 import com.mongodb.casbah.Imports._
 
+case class MenuItem(id:String, label:String, route:Call)
+case class Menu(active:String) {
+    val items = List(
+        MenuItem("agents", "Agents", routes.Agents.index),
+        MenuItem("invariants", "Invariants", routes.Invariants.index)
+    )
+}
+
 object Application extends Controller {
+
+    implicit val _menu = Menu("")
 
     val taskForm = Form(
       "label" -> nonEmptyText

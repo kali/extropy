@@ -15,6 +15,5 @@ unmanagedSourceDirectories in Compile += baseDirectory.value / "../core/src/main
 
 routesImport += "se.radley.plugin.salat.Binders._"
 
-templatesImport ++= Seq("org.bson.types.ObjectId",
-                        "org.zoy.kali.extropy.models._")
+templatesImport ++= Seq("org.bson.types.ObjectId")
 

@@ -1,16 +1,19 @@
-@(agents:Seq[ExtropyAgentDescription])
+@(agents:Seq[ExtropyAgentDescription], currentVersion:Long)(implicit menu:controllers.Menu)
 
 @main("Agents", moreHead=Html("""<meta http-equiv="refresh" content="10">""")) {
     <h1>@agents.size agent(s)</h1>
 
+    <p>Dynamic configuration version is: @currentVersion</p>
+
     <table class="table table-bordered table-condensed">
         <thead>
-            <tr><th>Name</th><th>Status</th></tr>
+            <tr><th>Name</th><th>Configuration version</th><th>Status</th></tr>
         </thead>
             @agents.map { agent =>
-                @defining(agent.until.getTime > System.currentTimeMillis) { ok =>
+                @defining(agent.lock.until.getTime > System.currentTimeMillis) { ok =>
                     <tr class="@if(ok) { success } else { danger }">
                         <td>@agent._id</td>
+                        <td class="@if(ok && currentVersion == agent.configurationVersion) { success } else { warning } ">@agent.configurationVersion</td>
                         <td>@if(ok) { OK } else { AWOL } </td>
                     </tr>
                 }

@@ -14,8 +14,9 @@ import scala.concurrent.duration._
 
 import mongoutils._
 
-case class Invariant(   _id:ObjectId, rule:Rule, emlp:MongoLock,
-                        status:InvariantStatus.Value=InvariantStatus.Created)
+case class Invariant(   _id:ObjectId, rule:Rule, emlp:MongoLock, statusChanging:Boolean=false,
+                        status:InvariantStatus.Value=InvariantStatus.Created,
+                        command:Option[InvariantStatus.Value]=None)
 
 object Invariant {
     def apply(rule:Rule) = new Invariant(new ObjectId(), rule, MongoLock.empty)
@@ -23,9 +24,8 @@ object Invariant {
 
 object InvariantStatus extends Enumeration {
     val Created = Value("created")
-    val Presync = Value("presync")          // want to sync, worker ask proxies to switch
+    val Stop = Value("stop")
     val Sync = Value("sync")                // all proxies are "sync", foreman syncs actively
-    val Prerun = Value("prerun")            // all proxies are required to switch ro run
     val Run = Value("run")                  // all proxies are "run"
     val Error = Value("error")
 }
@@ -109,16 +109,4 @@ class InvariantDAO(val db:MongoDB, val lockDuration:FiniteDuration) {
     val collection = db("invariants")
     val salat = new SalatDAO[Invariant,ObjectId](collection) {}
     val mlp = MongoLockingPool(collection, lockDuration)
-
-    def all = salat.find(MongoDBObject.empty).toList
-
-    def prospect(implicit by:LockerIdentity):Option[Invariant] =
-        mlp.lockOne().map( salat._grater.asObject(_) )
-    def claim(invariant:Invariant)(implicit by:LockerIdentity):Invariant =
-        salat._grater.asObject(mlp.relock(salat._grater.asDBObject(invariant)))
-
-    def switchInvariantTo(invariant:Invariant, status:InvariantStatus.Value) {
-        collection.update(MongoDBObject("_id" -> invariant._id),
-            MongoDBObject("$set" -> MongoDBObject("status" -> status.toString)))
-    }
 }

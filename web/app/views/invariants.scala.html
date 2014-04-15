@@ -1,0 +1,47 @@
+@(invariants:Seq[Invariant])(implicit menu:controllers.Menu, req: RequestHeader)
+
+@helper.javascriptRouter("jsRoutes")( routes.javascript.Invariants.command )
+
+<script type="text/javascript">
+    function sendCommand(id, command) {
+        $.ajax(jsRoutes.controllers.Invariants.command(id,command))
+            .done( function() { location.reload() } )
+            .fail( function() { alert("error") } );
+    }
+</script>
+
+@import models.InvariantStatus._
+@transitions(v:Value) = @{ 
+    Map(
+        Created -> List(),
+        Stop -> List(Created),
+        Sync -> List(Stop),
+        Run -> List(Stop, Sync),
+        Error -> List(Created)
+    )(v)
+}
+
+@main("Invariants" /*, moreHead=Html("""<meta http-equiv="refresh" content="10">""")*/) {
+    <h1>@invariants.size invariant(s)</h1>
+
+    <table class="table table-bordered table-condensed">
+        <thead>
+            <tr><th>Name</th><th>Foreman</th><th>Status</th><th>Command</th></tr>
+        </thead>
+            @invariants.map { inv =>
+                <tr class="">
+                    <td>@inv._id</td>
+                    @if(inv.emlp.stillValid) {
+                        <td class="success">@inv.emlp.locker</td>
+                    } else {
+                        <td class="warning"></td>
+                    }
+                    <td>@if(inv.statusChanging) { switching to: } @inv.status</td>
+                    <td> @for(command <- transitions(inv.status) ) {
+                        <button onclick='sendCommand("@inv._id", "@command")'>@command</button>
+                    }
+                    </td>
+                </tr>
+            }
+    </table>
+}

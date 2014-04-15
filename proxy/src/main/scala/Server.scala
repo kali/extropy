@@ -103,9 +103,9 @@ class ProxyServer(val extropy:BaseExtropyContext, val bind:InetSocketAddress, va
 
     val log = Logging(context.system, this)
 
-    log.info(s"Setup proxy from $bind to $send")
-
     var configuration = extropy.pullConfiguration
+    val id = "proxy-" + extropy.hostname + "/" + bind.toString
+    log.info(s"Setup proxy: $id")
     val agent = context.actorOf(ExtropyAgent.props("proxy-" + extropy.hostname + "/" + bind.toString, extropy, self), "agent")
 
     import scala.collection.mutable.Set
@@ -115,7 +115,6 @@ class ProxyServer(val extropy:BaseExtropyContext, val bind:InetSocketAddress, va
 
     def receive = {
         case b @ Bound(localAddress) =>
-            log.info(s"bound to $localAddress")
 
         case CommandFailed(_: Bind) => context stop self
 
@@ -132,13 +131,16 @@ class ProxyServer(val extropy:BaseExtropyContext, val bind:InetSocketAddress, va
                 pendingAcknowledgement.add(kid)
                 kid ! c
             }
+            pendingAcknowledgement.add(self)
+            self ! AckDynamicConfiguration(c)
         }
 
         case a:AckDynamicConfiguration => {
             if(a.config == configuration) {
                 pendingAcknowledgement.remove(sender)
-                if(pendingAcknowledgement.isEmpty)
+                if(pendingAcknowledgement.isEmpty) {
                     agent ! a
+                }
             }
         }
 

@@ -64,7 +64,7 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         val invariant = Invariant(RemoteControledSyncRule("foo"))
         extropy.invariantDAO.salat.save(invariant)
         implicit val _locker = LockerIdentity(id.toString)
-        val locked1 = extropy.invariantDAO.prospect.get
+        val locked1 = extropy.prospect.get
         val foreman = system.actorOf(Foreman.props(extropy, locked1, _locker))
         extropy.invariantDAO.salat.findOneByID(locked1._id).get.emlp.until.getTime should not
                  be >(locked1.emlp.until.getTime + 500)
@@ -74,15 +74,16 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         }
     }
 
-    it should "switch its invariant from Created to Presync" taggedAs(Tag("r")) in withExtropy { (id,extropy) =>
+    it should "switch its invariant from Created to Sync" taggedAs(Tag("r")) in withExtropy { (id,extropy) =>
         val invariant = Invariant(RemoteControledSyncRule("foo"))
         extropy.invariantDAO.salat.save(invariant)
         implicit val _locker = LockerIdentity(id.toString)
-        val locked1 = extropy.invariantDAO.prospect.get
+        val locked1 = extropy.prospect.get
         val foreman = system.actorOf(Foreman.props(extropy, locked1, _locker))
         extropy.agentDAO.readConfigurationVersion should be(0)
         eventually {
-            extropy.invariantDAO.salat.findOneByID(locked1._id).get.status should be(InvariantStatus.Presync)
+            extropy.invariantDAO.salat.findOneByID(locked1._id).get.status should be(InvariantStatus.Sync)
+            extropy.invariantDAO.salat.findOneByID(locked1._id).get.statusChanging should be(true)
         }
         eventually {
             extropy.agentDAO.readConfigurationVersion should be(1)
@@ -102,21 +103,26 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         }
         extropy.invariantDAO.salat.save(invariant)
         var config = expectMsgClass(classOf[DynamicConfiguration])
-        extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Presync)
+        extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Sync)
+        extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
         Thread.sleep(3000)
-        extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Presync)
+        extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Sync)
+        extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
         otherAgent ! AckDynamicConfiguration(config)
         eventually {
+            extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(false)
             extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Sync)
         }
         RemoteControledSyncRule.latch.get() should be(1)
         RemoteControledSyncRule.latch.set(2)
         eventually {
-            extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Prerun)
+            extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
+            extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Run)
         }
         config = expectMsgClass(classOf[DynamicConfiguration])
         otherAgent ! AckDynamicConfiguration(config)
         eventually {
+            extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(false)
             extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Run)
         }
     }

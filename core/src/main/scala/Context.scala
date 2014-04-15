@@ -4,6 +4,15 @@ import scala.concurrent.duration._
 
 import com.mongodb.casbah.Imports._
 
+import com.novus.salat._
+import com.novus.salat.annotations._
+import com.novus.salat.dao._
+import com.novus.salat.global._
+
+import scala.concurrent.duration._
+
+import mongoutils._
+
 trait BaseExtropyContext {
     val hostname = java.net.InetAddress.getLocalHost.getHostName
 
@@ -17,9 +26,33 @@ trait BaseExtropyContext {
     def agentDAO:ExtropyAgentDescriptionDAO
     def invariantDAO:InvariantDAO
 
-    def pullConfiguration = DynamicConfiguration(agentDAO.readConfigurationVersion, invariantDAO.all)
-
     def payloadMongo:MongoClient
+
+    // invariant stuff
+    def prospect(implicit by:LockerIdentity):Option[Invariant] =
+        invariantDAO.mlp.lockOne().map( invariantDAO.salat._grater.asObject(_) )
+    def claim(invariant:Invariant)(implicit by:LockerIdentity):Invariant =
+        invariantDAO.salat._grater.asObject(invariantDAO.mlp.relock(invariantDAO.salat._grater.asDBObject(invariant)))
+
+    def switchInvariantTo(invariant:Invariant, status:InvariantStatus.Value):Long = {
+        invariantDAO.collection.update(MongoDBObject("_id" -> invariant._id),
+            MongoDBObject("$set" -> MongoDBObject("status" -> status.toString, "statusChanging" -> true)))
+        agentDAO.bumpConfigurationVersion
+    }
+
+    def ackStatusChange(invariant:Invariant) {
+        invariantDAO.collection.update(MongoDBObject("_id" -> invariant._id),
+            MongoDBObject("$set" -> MongoDBObject("statusChanging" -> false)))
+    }
+    def ackCommand(invariant:Invariant) {
+        invariantDAO.collection.update(MongoDBObject("_id" -> invariant._id),
+            MongoDBObject("$unset" -> MongoDBObject("command" -> true)))
+    }
+
+    // dynamic configuration management
+    def pullConfiguration = DynamicConfiguration(agentDAO.readConfigurationVersion,
+        invariantDAO.salat.find(MongoDBObject.empty).toList)
+
 }
 
 case class Extropy(val extropyDatabase:MongoDB, payloadMongo:MongoClient) extends BaseExtropyContext {
