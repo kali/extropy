@@ -26,7 +26,7 @@ object ExtropyRootBuild extends Build {
     import ExtropyBuildSettings.buildSettings
 
     lazy val core = project in file("core")
-    lazy val proxy = project in file("proxy") dependsOn(core)
+    lazy val actors = project in file("actors") dependsOn(core)
 
-    lazy val root = project in file(".") aggregate(core, proxy)
+    lazy val root = project in file(".") aggregate(core, actors)
 }

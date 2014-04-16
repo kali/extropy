@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+
+cd `dirname $0`/..
+if [ "$1" == "" ]
+then
+    ./sbt -shell "project actors" shell
+else
+    ./sbt "project actors" "$@"
+fi
