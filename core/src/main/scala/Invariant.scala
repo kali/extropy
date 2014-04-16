@@ -1,7 +1,5 @@
 package org.zoy.kali.extropy
 
-import mongo._
-
 import org.bson.{ BSONObject }
 import com.mongodb.casbah.Imports._
 
@@ -13,6 +11,16 @@ import com.novus.salat.global._
 import scala.concurrent.duration._
 
 import mongoutils._
+
+abstract sealed class Change {
+    def writtenCollection:String
+}
+
+case class FullBodyUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change
+case class ModifiersUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change
+case class InsertChange(writtenCollection:String, documents:Stream[BSONObject]) extends Change
+case class DeleteChange(writtenCollection:String, selector:BSONObject) extends Change
+
 
 case class Invariant(   _id:ObjectId, rule:Rule, emlp:MongoLock, statusChanging:Boolean=false,
                         status:InvariantStatus.Value=InvariantStatus.Created,

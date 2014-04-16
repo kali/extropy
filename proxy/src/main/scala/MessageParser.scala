@@ -4,6 +4,8 @@ import akka.util.{ ByteString, ByteStringBuilder, ByteIterator }
 import org.bson.BSONObject
 import com.mongodb.casbah.Imports._
 
+import org.zoy.kali.extropy.{ Change, InsertChange, DeleteChange, ModifiersUpdateChange, FullBodyUpdateChange }
+
 object MessageParser {
     implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
 
@@ -332,15 +334,4 @@ case class OpReserved() extends Op {
     def binary:ByteString = ByteString.empty
     def asChange = null
 }
-
-// High level, semantic, representations for actual data modifications
-
-abstract sealed class Change {
-    def writtenCollection:String
-}
-
-case class FullBodyUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change
-case class ModifiersUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change
-case class InsertChange(writtenCollection:String, documents:Stream[BSONObject]) extends Change
-case class DeleteChange(writtenCollection:String, selector:BSONObject) extends Change
 

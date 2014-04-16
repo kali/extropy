@@ -5,16 +5,11 @@ import scala.concurrent.duration._
 import org.scalatest._
 import org.scalatest.matchers.ShouldMatchers
 
-import akka.actor.{ ActorSystem, Actor, ActorRef, Props }
-import akka.testkit.{ TestKit, TestActorRef, ImplicitSender, CallingThreadDispatcher }
-
 import org.zoy.kali.extropy._
-import org.zoy.kali.extropy.mongo._
 
 import com.mongodb.casbah.Imports._
 
-class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
-  with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll with MongodbTemporary {
+class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with MongodbTemporary {
 
     behavior of "An extropy proxy"
 
@@ -30,38 +25,21 @@ class ProxySpec extends TestKit(ActorSystem()) with ImplicitSender
         }
     }
 
-    it should "leave read messages alone" in withExtropy { (extropy,id) =>
-        val proxy = system.actorOf(ExtropyProxy.props(extropy))
-        val original = TargettedMessage(Server,
-                    CraftedMessage(0, 0, OpQuery(0, s"$id.users", 12, 12, MongoDBObject("name" -> "Kali"), None))
-                )
-        proxy ! original
-        val transformed = expectMsgClass(classOf[TargettedMessage])
-        transformed should be(original)
-    }
-
     it should "leave messages on an arbitrary collection alone" in withExtropy { (extropy,id) =>
-        val proxy = system.actorOf(ExtropyProxy.props(extropy))
-        val original = TargettedMessage(Server,
-                    CraftedMessage(0, 0, OpInsert(0, s"$id.not-users", Stream(MongoDBObject("name" -> "Kali"))))
-                )
-        proxy ! original
-        val transformed = expectMsgClass(classOf[TargettedMessage])
+        val proxy = ExtropyProxy(extropy)
+        val original = InsertChange(s"$id.not-users", Stream(MongoDBObject("name" -> "Kali")))
+        val transformed = proxy.processChange(original)
         transformed should be(original)
     }
 
     it should "transform messages on the right collection" in withExtropy { (extropy,id) =>
-        val proxy = system.actorOf(ExtropyProxy.props(extropy))
-        proxy ! TargettedMessage(Server,
-                    CraftedMessage(0, 0, OpInsert(0, s"$id.users", Stream(MongoDBObject("name" -> "Kali"))))
-                )
-        val transformed = expectMsgClass(classOf[TargettedMessage])
-        transformed.direction should be(Server)
-        val op:OpInsert = transformed.message.op.asInstanceOf[OpInsert]
-        op.fullCollectionName should be(s"$id.users")
-        op.documents.size should be(1)
-        op.documents.head should be(MongoDBObject("name" -> "Kali", "normName" -> "kali"))
+        val proxy = ExtropyProxy(extropy)
+        val original = InsertChange(s"$id.users", Stream(MongoDBObject("name" -> "Kali")))
+        val result = proxy.processChange(original)
+        result should be (a [InsertChange])
+        val transformed = result.asInstanceOf[InsertChange]
+        transformed.writtenCollection should be(s"$id.users")
+        transformed.documents.size should be(1)
+        transformed.documents.head should be(MongoDBObject("name" -> "Kali", "normName" -> "kali"))
     }
-
-    override def afterAll { TestKit.shutdownActorSystem(system) ; super.afterAll }
 }

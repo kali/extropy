@@ -1,4 +1,4 @@
-package org.zoy.kali.extropy.unit
+package org.zoy.kali.extropy
 
 import scala.concurrent.duration._
 
@@ -30,7 +30,7 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
 
     it should "deal with insert" in withExtropy { (id,extropy) =>
         extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule("test.users", "name", "normName")) )
-        val proxy = system.actorOf(ExtropyProxy.props(extropy))
+        val proxy = system.actorOf(ExtropyProxyActor.props(extropy))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpInsert(0, "test.users", Stream(MongoDBObject("name" -> "Kali"))))
                 )
@@ -41,7 +41,7 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
 
     it should "deal with full body update" in withExtropy { (id, extropy) =>
         extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule("test.users", "name", "normName")) )
-        val proxy = system.actorOf(ExtropyProxy.props(extropy))
+        val proxy = system.actorOf(ExtropyProxyActor.props(extropy))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpUpdate(0, "test.users", 0, MongoDBObject(), MongoDBObject("name" -> "Kali")))
                 )
@@ -52,7 +52,7 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
 
     it should "deal with modifier update" in withExtropy { (id, extropy) =>
         extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule("test.users", "name", "normName")) )
-        val proxy = system.actorOf(ExtropyProxy.props(extropy))
+        val proxy = system.actorOf(ExtropyProxyActor.props(extropy))
         proxy ! TargettedMessage(Server,
                     CraftedMessage(0, 0, OpUpdate(0, "test.users", 0, MongoDBObject(),
                         MongoDBObject("$set" -> MongoDBObject("name" -> "Kali"))))

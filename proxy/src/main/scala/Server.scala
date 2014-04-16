@@ -164,7 +164,7 @@ class ProxyPipe(extropy:BaseExtropyContext, socket:ActorRef, backendAddress:Inet
     val log = Logging(context.system, this)
     val frontendHandler = context.actorOf(ConnectionActor.props(socket), "frontend")
     val backendHandler = context.actorOf(ConnectionActor.props(backendAddress), "backend")
-    val proxy = context.actorOf(ExtropyProxy.props(extropy), "proxy")
+    val proxy = context.actorOf(ExtropyProxyActor.props(extropy), "proxy")
 
     context watch frontendHandler
     context watch backendHandler

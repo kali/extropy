@@ -15,26 +15,24 @@ import scala.concurrent.Await
 
 import mongoutils._
 
-    case class RemoteControledSyncRule(label:String) extends Rule {
-        import mongo._
-        def alterWrite(op:Change) = op
-        def monitoredCollections = List()
-        def activeSync(extropy:BaseExtropyContext) {
-            RemoteControledSyncRule.latch.set(1)
-            while(RemoteControledSyncRule.latch.get() < 2)
-                Thread.sleep(10)
-        }
+case class RemoteControledSyncRule(label:String) extends Rule {
+    import mongo._
+    def alterWrite(op:Change) = op
+    def monitoredCollections = List()
+    def activeSync(extropy:BaseExtropyContext) {
+        RemoteControledSyncRule.latch.set(1)
+        while(RemoteControledSyncRule.latch.get() < 2)
+            Thread.sleep(10)
     }
-    object RemoteControledSyncRule {
-        val latch = new java.util.concurrent.atomic.AtomicInteger(0)
-    }
+}
+
+object RemoteControledSyncRule {
+    val latch = new java.util.concurrent.atomic.AtomicInteger(0)
+}
 
 
 class WorkerSpec extends TestKit(ActorSystem("workerspec"))
     with FlatSpecLike with ShouldMatchers with MongodbTemporary with Eventually {
-
-    implicit override val patienceConfig =
-        PatienceConfig(timeout = scaled(Span(2, Seconds)), interval = scaled(Span(50, Millis)))
 
     behavior of "An overseer"
 
@@ -142,5 +140,8 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         TestKit.shutdownActorSystem(system)
         super.afterAll
     }
+
+    implicit override val patienceConfig =
+        PatienceConfig(timeout = scaled(Span(2, Seconds)), interval = scaled(Span(50, Millis)))
 
 }
