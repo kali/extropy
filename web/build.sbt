@@ -11,9 +11,9 @@ libraryDependencies ++= Seq(
 
 play.Project.playScalaSettings
 
-unmanagedSourceDirectories in Compile += baseDirectory.value / "../core/src/main/scala/models/"
+unmanagedSourceDirectories in Compile += baseDirectory.value / "../core/src/main/scala/"
 
 routesImport += "se.radley.plugin.salat.Binders._"
 
-templatesImport ++= Seq("org.bson.types.ObjectId")
+templatesImport ++= Seq("org.bson.types.ObjectId", "org.zoy.kali.extropy._")
 

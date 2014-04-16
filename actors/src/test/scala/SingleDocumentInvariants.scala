@@ -21,7 +21,7 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
     def withExtropy(testCode:((String, BaseExtropyContext) => Any)) {
         val id = System.currentTimeMillis.toString
         val dbName = s"extropy-spec-$id"
-        val extropy = Extropy(mongoBackendClient(dbName), mongoBackendClient)
+        val extropy = ExtropyContext(mongoBackendClient(dbName), mongoBackendClient)
         try {
             testCode(id, extropy)
         } finally {

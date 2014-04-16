@@ -6,7 +6,6 @@ import com.mongodb.casbah.Imports._
 import com.novus.salat._
 import com.novus.salat.annotations._
 import com.novus.salat.dao._
-import com.novus.salat.global._
 
 import scala.concurrent.duration._
 
@@ -113,7 +112,7 @@ case class StringNormalizationRule(collection:String, from:String, to:String)
     override def compute(src:AnyRef):AnyRef = src.toString.toLowerCase
 }
 
-class InvariantDAO(val db:MongoDB, val lockDuration:FiniteDuration) {
+class InvariantDAO(val db:MongoDB, val lockDuration:FiniteDuration)(implicit ctx: com.novus.salat.Context) {
     val collection = db("invariants")
     val salat = new SalatDAO[Invariant,ObjectId](collection) {}
     val mlp = MongoLockingPool(collection, lockDuration)

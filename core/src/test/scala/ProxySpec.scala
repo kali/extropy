@@ -16,7 +16,7 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
     def withExtropy(testCode:((BaseExtropyContext,String) => Any)) {
         val id = System.currentTimeMillis.toString
         val dbName = s"extropy-spec-$id"
-        val extropy = Extropy(mongoBackendClient(dbName), mongoBackendClient)
+        val extropy = ExtropyContext(mongoBackendClient(dbName), mongoBackendClient)
         try {
             extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule(s"$id.users", "name", "normName")) )
             testCode(extropy, id)

@@ -55,7 +55,7 @@ trait BaseExtropyContext {
 
 }
 
-case class Extropy(val extropyDatabase:MongoDB, payloadMongo:MongoClient) extends BaseExtropyContext {
+case class ExtropyContext(val extropyDatabase:MongoDB, payloadMongo:MongoClient) extends BaseExtropyContext {
     val agentDAO = new ExtropyAgentDescriptionDAO(extropyDatabase, agentLockDuration)
     val invariantDAO = new InvariantDAO(extropyDatabase, invariantLockDuration)
 }

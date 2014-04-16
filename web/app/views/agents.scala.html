@@ -10,7 +10,7 @@
             <tr><th>Name</th><th>Configuration version</th><th>Status</th></tr>
         </thead>
             @agents.map { agent =>
-                @defining(agent.lock.until.getTime > System.currentTimeMillis) { ok =>
+                @defining(agent.emlp.until.getTime > System.currentTimeMillis) { ok =>
                     <tr class="@if(ok) { success } else { danger }">
                         <td>@agent._id</td>
                         <td class="@if(ok && currentVersion == agent.configurationVersion) { success } else { warning } ">@agent.configurationVersion</td>

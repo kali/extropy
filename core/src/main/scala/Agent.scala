@@ -9,14 +9,13 @@ import com.novus.salat.dao._
 
 import com.mongodb.casbah.Imports._
 
-import com.novus.salat.global._
-
 import scala.concurrent.duration._
 
 import mongoutils._
 
 case class ExtropyAgentDescription(_id:String, emlp:MongoLock, configurationVersion:Long=(-1L))
-class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration) {
+
+class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration)(implicit ctx: com.novus.salat.Context) {
     val collection = db("agents")
     val salat = new SalatDAO[ExtropyAgentDescription,ObjectId](collection) {}
 

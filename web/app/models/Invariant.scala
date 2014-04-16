@@ -9,20 +9,10 @@ import com.mongodb.casbah.Imports._
 import se.radley.plugin.salat._
 import salatContext._
 
-case class Invariant(   _id:ObjectId, /* rule:Rule, */ emlp:MongoLock, statusChanging:Boolean=false,
-                        status:InvariantStatus.Value=InvariantStatus.Created,
-                        command:Option[InvariantStatus.Value])
+import org.zoy.kali.extropy._
 
-object InvariantStatus extends Enumeration {
-    val Created = Value("created")
-    val Stop = Value("stop")                // nobody does nothing. sync will be required
-    val Sync = Value("sync")                // all proxies are "sync", foreman syncs actively
-    val Run = Value("run")                  // all proxies are "run"
-    val Error = Value("error")
-}
-
-object Invariant extends ModelCompanion[Invariant,ObjectId] {
-    val dao = new SalatDAO[Invariant,ObjectId](collection=mongoCollection("invariants")) {}
+object InvariantPlay extends ModelCompanion[Invariant,ObjectId] {
+    val dao = Extropy.invariantDAO.salat
 
     def command(inv:Invariant, command:InvariantStatus.Value) {
         dao.update(MongoDBObject("_id" -> inv._id), MongoDBObject("$set" -> MongoDBObject("command" -> command.toString)))

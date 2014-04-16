@@ -9,14 +9,7 @@ import com.mongodb.casbah.Imports._
 import se.radley.plugin.salat._
 import salatContext._
 
-case class MongoLock(@Key("lu") until:Date, @Key("lb") locker:Option[AnyRef]) {
-    def stillValid = System.currentTimeMillis < until.getTime
-}
-object MongoLock {
-    val empty = MongoLock(new Date(0), None)
-}
-
-case class ExtropyAgentDescription(_id:String, configurationVersion:Long, @Key("emlp") lock:MongoLock)
+import org.zoy.kali.extropy._
 
 object ExtropyAgentDescription extends ModelCompanion[ExtropyAgentDescription,String] {
     val dao = new SalatDAO[ExtropyAgentDescription,String](collection=mongoCollection("agents")) {}

@@ -42,7 +42,7 @@ class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLik
     def withProxiedClient(testCode:(BaseExtropyContext, MongoClient) => Any) {
         val id = System.currentTimeMillis.toString
         val dbName = s"extropy-spec-$id"
-        val extropy = Extropy(mongoBackendClient(dbName), mongoBackendClient)
+        val extropy = ExtropyContext(mongoBackendClient(dbName), mongoBackendClient)
 
         val port = de.flapdoodle.embed.process.runtime.Network.getFreeServerPort
 

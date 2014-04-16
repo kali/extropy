@@ -61,7 +61,7 @@ class RunDefinition {
             }
         })
 
-        val extropy = Extropy(extropyMongo(extropyDatabase), payloadMongo)
+        val extropy = ExtropyContext(extropyMongo(extropyDatabase), payloadMongo)
 
         if(worker) {
             system.actorOf(Overseer.props(extropy, extropy.hostname.replace(".", "-")), "overseer")

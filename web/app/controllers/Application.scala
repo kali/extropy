@@ -10,6 +10,8 @@ import play.api.data.Forms._
 
 import com.mongodb.casbah.Imports._
 
+import se.radley.plugin.salat._
+
 case class MenuItem(id:String, label:String, route:Call)
 case class Menu(active:String) {
     val items = List(
