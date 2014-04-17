@@ -37,7 +37,6 @@ object InvariantStatus extends Enumeration {
     val Error = Value("error")
 }
 
-@Salat
 case class Rule(container:Container, contact:Contact, processor:Processor) {
     def monitoredCollections:List[String] = contact.monitoredCollections(container)
     def alterWrite(op:Change):Change = contact.alterWrite(this, op)
@@ -58,7 +57,6 @@ abstract class Container {
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject)
 }
 
-@Salat
 case class CollectionContainer(collectionFullName:String) extends Container {
     val dbName = collectionFullName.split('.').head
     val collectionName = collectionFullName.split('.').drop(1).mkString(".")
@@ -93,7 +91,6 @@ abstract class Contact {
     def alterWrite(rule:Rule, change:Change):Change
 }
 
-@Salat
 case class SameDocumentContact extends Contact {
     def resolve(from:DBObject) = List(from)
     def monitoredCollections(container:Container) = List(container.collection)
@@ -118,7 +115,6 @@ case class SameDocumentContact extends Contact {
 
 // FOR TESTS
 
-@Salat
 case class StringNormalizationProcessor(from:String, to:String) extends Processor {
     def process(data:Traversable[DBObject]) = Map(to -> (data.headOption match {
         case Some(obj) => obj.get(from).toString.toLowerCase
