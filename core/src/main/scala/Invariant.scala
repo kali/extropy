@@ -38,12 +38,101 @@ object InvariantStatus extends Enumeration {
 }
 
 @Salat
-abstract class Rule {
-    def alterWrite(op:Change):Change
-    def monitoredCollections:List[String]
-    def activeSync(extropy:BaseExtropyContext):Unit
+case class Rule(container:Container, contact:Contact, processor:Processor) {
+    def monitoredCollections:List[String] = contact.monitoredCollections(container)
+    def alterWrite(op:Change):Change = contact.alterWrite(this, op)
+    def activeSync(extropy:BaseExtropyContext) {
+        container.iterator(extropy.payloadMongo).foreach { location =>
+            val values = processor.process(contact.resolve(location.dbo))
+            container.setValues(extropy.payloadMongo, location, values)
+        }
+    }
 }
 
+// CONTAINERS
+
+@Salat
+abstract class Container {
+    def iterator(payloadMongo:MongoClient):Traversable[Location]
+    def collection:String
+    def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject)
+}
+
+@Salat
+case class CollectionContainer(collectionFullName:String) extends Container {
+    val dbName = collectionFullName.split('.').head
+    val collectionName = collectionFullName.split('.').drop(1).mkString(".")
+
+    def collection = collectionFullName
+    def iterator(payloadMongo:MongoClient) = {
+        val cursor = payloadMongo(dbName)(collectionName).find(MongoDBObject.empty).sort(MongoDBObject("_id" -> 1))
+        cursor.option |= com.mongodb.Bytes.QUERYOPTION_NOTIMEOUT
+        cursor.toTraversable.map( TopLevelLocation(_) )
+    }
+    def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {
+        payloadMongo(dbName)(collectionName).update(
+            MongoDBObject("_id" -> location.dbo.get("_id")),
+            MongoDBObject("$set" -> values)
+        )
+    }
+}
+
+abstract class Location {
+    def dbo:DBObject
+}
+
+case class TopLevelLocation(dbo:DBObject) extends Location {
+}
+
+// CONTACTS
+
+@Salat
+abstract class Contact {
+    def resolve(from:DBObject):Traversable[DBObject]
+    def monitoredCollections(container:Container):List[String]
+    def alterWrite(rule:Rule, change:Change):Change
+}
+
+@Salat
+case class SameDocumentContact extends Contact {
+    def resolve(from:DBObject) = List(from)
+    def monitoredCollections(container:Container) = List(container.collection)
+    def alterWrite(rule:Rule, change:Change):Change = change match {
+        case insert:InsertChange => insert.copy(
+            documents=insert.documents.map { d => MongoDBObject(d.asInstanceOf[DBObject].toList ++
+                rule.processor.process(List(d.asInstanceOf[DBObject])).toList) }
+        )
+        case fbu:FullBodyUpdateChange => fbu.copy(
+            update=MongoDBObject(fbu.update.asInstanceOf[DBObject].toList ++
+                rule.processor.process(List(fbu.update.asInstanceOf[DBObject])).toList)
+        )
+        case delete:DeleteChange => delete
+        case _ => throw new NotImplementedError
+    }
+}
+
+// PROCESSORS
+@Salat abstract class Processor {
+    def process(data:Traversable[DBObject]):DBObject
+}
+
+// FOR TESTS
+
+@Salat
+case class StringNormalizationProcessor(from:String, to:String) extends Processor {
+    def process(data:Traversable[DBObject]) = Map(to -> (data.headOption match {
+        case Some(obj) => obj.get(from).toString.toLowerCase
+        case None => null
+    }))
+}
+
+object StringNormalizationRule {
+    def apply(collection:String, from:String, to:String) =
+        Rule(CollectionContainer(collection), SameDocumentContact(),
+                StringNormalizationProcessor(from,to))
+}
+
+/*
 @Salat
 abstract class SameDocumentRule(collection:String) extends Rule {
     val computeOneLocally:(BSONObject=>AnyRef) = null
@@ -111,6 +200,7 @@ case class StringNormalizationRule(collection:String, from:String, to:String)
         extends ScalarFieldToScalarFieldRule(collection, from, to) {
     override def compute(src:AnyRef):AnyRef = src.toString.toLowerCase
 }
+*/
 
 class InvariantDAO(val db:MongoDB, val lockDuration:FiniteDuration)(implicit ctx: com.novus.salat.Context) {
     val collection = db("invariants")
