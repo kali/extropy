@@ -15,18 +15,20 @@ import scala.concurrent.Await
 
 import mongoutils._
 
-case class RemoteControledSyncRule(label:String) extends Rule {
+case class RemoteControledContainer(label:String) extends Container {
     import mongo._
-    def alterWrite(op:Change) = op
-    def monitoredCollections = List()
-    def activeSync(extropy:BaseExtropyContext) {
+    def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {}
+    def collection = label
+    def iterator(payloadMongo:MongoClient) = {
         RemoteControledSyncRule.latch.set(1)
         while(RemoteControledSyncRule.latch.get() < 2)
             Thread.sleep(10)
+        List()
     }
 }
 
 object RemoteControledSyncRule {
+    def apply(junk:String) = Rule(CollectionContainer(junk), SameDocumentContact(), StringNormalizationProcessor("a", "b"))
     val latch = new java.util.concurrent.atomic.AtomicInteger(0)
 }
 

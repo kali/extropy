@@ -33,6 +33,7 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
     }
 
     it should "transform messages on the right collection" in withExtropy { (extropy,id) =>
+        pending
         val proxy = ExtropyProxy(extropy)
         val original = InsertChange(s"$id.users", Stream(MongoDBObject("name" -> "Kali")))
         val result = proxy.processChange(original)

@@ -29,6 +29,7 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
     }
 
     it should "deal with insert" in withExtropy { (id,extropy) =>
+        pending
         extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule("test.users", "name", "normName")) )
         val proxy = system.actorOf(ExtropyProxyActor.props(extropy))
         proxy ! TargettedMessage(Server,
@@ -40,6 +41,7 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
     }
 
     it should "deal with full body update" in withExtropy { (id, extropy) =>
+        pending
         extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule("test.users", "name", "normName")) )
         val proxy = system.actorOf(ExtropyProxyActor.props(extropy))
         proxy ! TargettedMessage(Server,
@@ -51,6 +53,7 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
     }
 
     it should "deal with modifier update" in withExtropy { (id, extropy) =>
+        pending
         extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule("test.users", "name", "normName")) )
         val proxy = system.actorOf(ExtropyProxyActor.props(extropy))
         proxy ! TargettedMessage(Server,
