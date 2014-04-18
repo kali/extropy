@@ -38,11 +38,17 @@ object InvariantStatus extends Enumeration {
 }
 
 case class MonitoredField(container:Container, field:String) {
-    def monitor(op:Change):Set[Location] = op match {
-        case InsertChange(writtenCollection, documents) => documents.filter( _.containsField(field) )
-                .map( d => DocumentLocation(d.asInstanceOf[DBObject]) ).toSet
-        case _ => Set()
-    }
+    def monitor(op:Change):Set[Location] =
+        if(container.collection == op.writtenCollection)
+            op match {
+                case InsertChange(writtenCollection, documents) => documents.filter( _.containsField(field) )
+                        .map( d => DocumentLocation(d.asInstanceOf[DBObject]) ).toSet
+                case DeleteChange(writtenCollection, selector) =>
+                    Set(SelectorLocation(selector.asInstanceOf[DBObject]))
+                case _ => Set()
+            }
+        else
+            Set()
 }
 case class Rule(container:Container, contact:Contact, processor:Processor) {
     val monitoredFields:Set[MonitoredField] = (
@@ -53,10 +59,12 @@ case class Rule(container:Container, contact:Contact, processor:Processor) {
 //    def monitoredCollections:List[String] = contact.monitoredCollections(container)
     def alterWrite(op:Change):Change = op // contact.alterWrite(this, op)
     def activeSync(extropy:BaseExtropyContext) {
+/*
         container.iterator(extropy.payloadMongo).foreach { location =>
             val values = processor.process(contact.resolve(location.dbo))
             container.setValues(extropy.payloadMongo, location, values)
         }
+*/
     }
 
 /*
@@ -90,10 +98,12 @@ case class CollectionContainer(collectionFullName:String) extends Container {
         cursor.toTraversable.map( DocumentLocation(_) )
     }
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {
+/*
         payloadMongo(dbName)(collectionName).update(
             MongoDBObject("_id" -> location.dbo.get("_id")),
             MongoDBObject("$set" -> values)
         )
+*/
     }
 }
 
@@ -106,12 +116,11 @@ case class SubCollectionContainer(collectionFullName:String, arrayField:String) 
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {}
 }
 
-abstract class Location {
-    def dbo:DBObject
-}
+// LOCATION
 
-case class DocumentLocation(dbo:DBObject) extends Location {
-}
+abstract class Location { }
+case class DocumentLocation(dbo:DBObject) extends Location
+case class SelectorLocation(selector:DBObject) extends Location
 
 // CONTACTS
 

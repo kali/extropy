@@ -71,8 +71,24 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
         monitorPostsAuthorId.monitor(insertPosts) should be ( Set(DocumentLocation(post1), DocumentLocation(post2)) )
         //monitorPostsCommentsAuthorId.monitor(insertPosts) should be ( Set(DocumentLocation(post2)) ) // FIXME
         monitorPostsCommentsAuthorId.monitor(insertPosts) should be ( Set(DocumentLocation(post1), DocumentLocation(post2)) )
+
+        val insertNotUsers = InsertChange("blog.not-user", Stream( userLiz, userCatLady ))
+        monitorUsersName.monitor(insertNotUsers) should be( 'empty )
     }
 
+    it should "monitor delete" in {
+        val deleteUsers = DeleteChange("blog.users", MongoDBObject("_id" -> "liz"))
+        monitorUsersName.monitor(deleteUsers) should be( Set(SelectorLocation(deleteUsers.selector.asInstanceOf[DBObject])) )
+        monitorPostsTitle.monitor(deleteUsers) should be ( 'empty )
+        monitorPostsAuthorId.monitor(deleteUsers) should be ( 'empty )
+        monitorPostsCommentsAuthorId.monitor(deleteUsers) should be ( 'empty )
+
+        val deletePosts = DeleteChange("blog.posts", MongoDBObject("_id" -> "post2"))
+        monitorUsersName.monitor(deletePosts) should be( 'empty )
+        monitorPostsTitle.monitor(deletePosts) should be ( Set(SelectorLocation(deletePosts.selector.asInstanceOf[DBObject])) )
+        monitorPostsAuthorId.monitor(deletePosts) should be ( Set(SelectorLocation(deletePosts.selector.asInstanceOf[DBObject])) )
+        monitorPostsCommentsAuthorId.monitor(deletePosts) should be ( Set(SelectorLocation(deletePosts.selector.asInstanceOf[DBObject])) )
+    }
 
 /*
     it should "detected monitored locations on insert" in {
