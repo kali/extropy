@@ -37,9 +37,15 @@ object InvariantStatus extends Enumeration {
     val Error = Value("error")
 }
 
+case class MonitoredField(container:Container, field:String)
 case class Rule(container:Container, contact:Contact, processor:Processor) {
-    def monitoredCollections:List[String] = contact.monitoredCollections(container)
-    def alterWrite(op:Change):Change = contact.alterWrite(this, op)
+    def monitoredFields:Set[MonitoredField] = (
+        processor.monitoredFields.map( MonitoredField(contact.processorContainer, _ ) )
+        ++ contact.localyMonitoredFields.map( MonitoredField( container, _ ) )
+        ++ contact.processorMonitoredFields.map( MonitoredField( contact.processorContainer, _ ) )
+    )
+//    def monitoredCollections:List[String] = contact.monitoredCollections(container)
+    def alterWrite(op:Change):Change = op // contact.alterWrite(this, op)
     def activeSync(extropy:BaseExtropyContext) {
         container.iterator(extropy.payloadMongo).foreach { location =>
             val values = processor.process(contact.resolve(location.dbo))
@@ -75,6 +81,15 @@ case class CollectionContainer(collectionFullName:String) extends Container {
     }
 }
 
+case class SubCollectionContainer(collectionFullName:String, arrayField:String) extends Container {
+    val dbName = collectionFullName.split('.').head
+    val collectionName = collectionFullName.split('.').drop(1).mkString(".")
+
+    def iterator(payloadMongo:MongoClient):Traversable[Location] = null
+    def collection:String = collectionFullName
+    def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {}
+}
+
 abstract class Location {
     def dbo:DBObject
 }
@@ -87,13 +102,18 @@ case class TopLevelLocation(dbo:DBObject) extends Location {
 @Salat
 abstract class Contact {
     def resolve(from:DBObject):Traversable[DBObject]
-    def monitoredCollections(container:Container):List[String]
-    def alterWrite(rule:Rule, change:Change):Change
+    def processorContainer:Container
+    def localyMonitoredFields:Set[String]
+    def processorMonitoredFields:Set[String]
+//    def alterWrite(rule:Rule, change:Change):Change
 }
 
-case class SameDocumentContact extends Contact {
+case class SameDocumentContact(container:Container) extends Contact {
     def resolve(from:DBObject) = List(from)
-    def monitoredCollections(container:Container) = List(container.collection)
+    def processorContainer:Container = container
+    def localyMonitoredFields = Set()
+    def processorMonitoredFields = Set()
+/*
     def alterWrite(rule:Rule, change:Change):Change = change match {
         case insert:InsertChange => insert.copy(
             documents=insert.documents.map { d => MongoDBObject(d.asInstanceOf[DBObject].toList ++
@@ -106,25 +126,68 @@ case class SameDocumentContact extends Contact {
         case delete:DeleteChange => delete
         case _ => throw new NotImplementedError
     }
+*/
+}
+
+case class FollowKeyContact(collectionName:String, localFieldName:String) extends Contact {
+    def resolve(from:DBObject) = null
+    def processorContainer:Container = CollectionContainer(collectionName)
+    val localyMonitoredFields = Set(localFieldName)
+    val processorMonitoredFields:Set[String] = Set()
+/*
+    def alterWrite(rule:Rule, change:Change):Change = change match {
+        case insert:InsertChange => insert.copy(
+            documents=insert.documents.map { d => MongoDBObject(d.asInstanceOf[DBObject].toList ++
+                rule.processor.process(List(d.asInstanceOf[DBObject])).toList) }
+        )
+        case fbu:FullBodyUpdateChange => fbu.copy(
+            update=MongoDBObject(fbu.update.asInstanceOf[DBObject].toList ++
+                rule.processor.process(List(fbu.update.asInstanceOf[DBObject])).toList)
+        )
+        case delete:DeleteChange => delete
+        case _ => throw new NotImplementedError
+    }
+*/
+}
+
+case class ReverseKeyContact(container:Container, remoteFieldName:String) extends Contact {
+    def resolve(from:DBObject) = null
+    def processorContainer:Container = container
+    val localyMonitoredFields:Set[String] = Set()
+    val processorMonitoredFields = Set(remoteFieldName)
 }
 
 // PROCESSORS
 @Salat abstract class Processor {
+    def monitoredFields:Set[String]
     def process(data:Traversable[DBObject]):DBObject
+}
+
+case class CopyField(from:String, to:String)
+case class CopyFieldsProcessor(fields:List[CopyField]) extends Processor {
+    val monitoredFields:Set[String] = fields.map( _.from ).toSet
+    def process(data:Traversable[DBObject]) = MongoDBObject.empty
+}
+
+case class CountProcessor(field:String) extends Processor {
+    val monitoredFields:Set[String] = Set()
+    def process(data:Traversable[DBObject]) = MongoDBObject(field -> data.size)
 }
 
 // FOR TESTS
 
 case class StringNormalizationProcessor(from:String, to:String) extends Processor {
+    val monitoredFields:Set[String] = Set(from)
     def process(data:Traversable[DBObject]) = Map(to -> (data.headOption match {
         case Some(obj) => obj.get(from).toString.toLowerCase
         case None => null
     }))
 }
 
+
 object StringNormalizationRule {
     def apply(collection:String, from:String, to:String) =
-        Rule(CollectionContainer(collection), SameDocumentContact(),
+        Rule(CollectionContainer(collection), SameDocumentContact(CollectionContainer(collection)),
                 StringNormalizationProcessor(from,to))
 }
 
