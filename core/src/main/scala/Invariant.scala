@@ -37,9 +37,15 @@ object InvariantStatus extends Enumeration {
     val Error = Value("error")
 }
 
-case class MonitoredField(container:Container, field:String)
+case class MonitoredField(container:Container, field:String) {
+    def monitor(op:Change):Set[Location] = op match {
+        case InsertChange(writtenCollection, documents) => documents.filter( _.containsField(field) )
+                .map( d => DocumentLocation(d.asInstanceOf[DBObject]) ).toSet
+        case _ => Set()
+    }
+}
 case class Rule(container:Container, contact:Contact, processor:Processor) {
-    def monitoredFields:Set[MonitoredField] = (
+    val monitoredFields:Set[MonitoredField] = (
         processor.monitoredFields.map( MonitoredField(contact.processorContainer, _ ) )
         ++ contact.localyMonitoredFields.map( MonitoredField( container, _ ) )
         ++ contact.processorMonitoredFields.map( MonitoredField( contact.processorContainer, _ ) )
@@ -52,6 +58,16 @@ case class Rule(container:Container, contact:Contact, processor:Processor) {
             container.setValues(extropy.payloadMongo, location, values)
         }
     }
+
+/*
+    def dirtiedSet(op:Change):Set[Location] =
+        monitoredFields.
+        case InsertChange(writtenCollection, documents) => Set()
+        case FullBodyUpdateChange(writtenCollection, selector, update) =>
+        case ModifiersUpdateChange(writtenCollection, selector, update) =>
+        case DeleteChange(writtenCollection, selector) =>
+    }
+*/
 }
 
 // CONTAINERS
@@ -71,7 +87,7 @@ case class CollectionContainer(collectionFullName:String) extends Container {
     def iterator(payloadMongo:MongoClient) = {
         val cursor = payloadMongo(dbName)(collectionName).find(MongoDBObject.empty).sort(MongoDBObject("_id" -> 1))
         cursor.option |= com.mongodb.Bytes.QUERYOPTION_NOTIMEOUT
-        cursor.toTraversable.map( TopLevelLocation(_) )
+        cursor.toTraversable.map( DocumentLocation(_) )
     }
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {
         payloadMongo(dbName)(collectionName).update(
@@ -94,7 +110,7 @@ abstract class Location {
     def dbo:DBObject
 }
 
-case class TopLevelLocation(dbo:DBObject) extends Location {
+case class DocumentLocation(dbo:DBObject) extends Location {
 }
 
 // CONTACTS

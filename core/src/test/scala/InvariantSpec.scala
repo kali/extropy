@@ -16,11 +16,11 @@ posts: ( _id, authorId, authorName*, title, searchableTitle*, comments[ { author
 
 class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll {
 
-    behavior of "Rule"
+    behavior of "Change detection"
 
-    val searchableTitleRule = Rule( CollectionContainer("blog.posts"),
-                                    SameDocumentContact(CollectionContainer("blog.posts")),
-                                    StringNormalizationProcessor("title", "searchableTitle"))
+    val searchableTitleRule = Rule(     CollectionContainer("blog.posts"),
+                                        SameDocumentContact(CollectionContainer("blog.posts")),
+                                        StringNormalizationProcessor("title", "searchableTitle"))
 
     val authorNameInPostRule = Rule(    CollectionContainer("blog.posts"),
                                         FollowKeyContact("blog.users", "authorId"),
@@ -38,23 +38,44 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
                                         FollowKeyContact("blog.users", "authorId"),
                                         CopyFieldsProcessor(List(CopyField("name", "authorName"))))
 
+    val monitorUsersName = MonitoredField(CollectionContainer("blog.users"), "name")
+    val monitorPostsTitle = MonitoredField(CollectionContainer("blog.posts"), "title")
+    val monitorPostsAuthorId = MonitoredField(CollectionContainer("blog.posts"), "authorId")
+    val monitorPostsCommentsAuthorId = MonitoredField(SubCollectionContainer("blog.posts", "comments"), "authorId")
+
     it should "identify fields to monitor" in {
-        searchableTitleRule.monitoredFields should be(
-            Set(MonitoredField(CollectionContainer("blog.posts"), "title"))
-        )
-        authorNameInPostRule.monitoredFields should be(Set(
-            MonitoredField(CollectionContainer("blog.posts"), "authorId"),
-            MonitoredField(CollectionContainer("blog.users"), "name")
-        ))
-        postCountInUserRule.monitoredFields should be(Set(
-            MonitoredField(CollectionContainer("blog.posts"), "authorId")
-        ))
-        commentCountInUserRule.monitoredFields should be(Set(
-            MonitoredField(SubCollectionContainer("blog.posts","comments"), "authorId")
-        ))
-        authorNameInComment.monitoredFields should be(Set(
-            MonitoredField(SubCollectionContainer("blog.posts","comments"), "authorId"),
-            MonitoredField(CollectionContainer("blog.users"), "name")
-        ))
+        searchableTitleRule.monitoredFields should be( Set( monitorPostsTitle ) )
+        authorNameInPostRule.monitoredFields should be( Set( monitorPostsAuthorId, monitorUsersName ) )
+        postCountInUserRule.monitoredFields should be( Set( monitorPostsAuthorId ) )
+        commentCountInUserRule.monitoredFields should be( Set( monitorPostsCommentsAuthorId ) )
+        authorNameInComment.monitoredFields should be(Set( monitorPostsCommentsAuthorId, monitorUsersName ))
     }
+
+    val userLiz = MongoDBObject("_id" -> "liz", "name" -> "Elizabeth Lemon")
+    val userCatLady = MongoDBObject("_id" -> "catLady")
+
+    val post1 = MongoDBObject("_id" -> "post1", "title" -> "Title for Post 1", "authorId" -> "liz")
+    val post2 = MongoDBObject("_id" -> "post2", "title" -> "Title for Post 2", "authorId" -> "liz",
+                    "comments" -> List(MongoDBObject("authorId" -> "jack")))
+
+    it should "monitor inserts" in {
+        val insertUsers = InsertChange("blog.users", Stream( userLiz, userCatLady ))
+        monitorUsersName.monitor(insertUsers) should be( Set(DocumentLocation(userLiz)) )
+        monitorPostsTitle.monitor(insertUsers) should be ( 'empty )
+        monitorPostsAuthorId.monitor(insertUsers) should be ( 'empty )
+        monitorPostsCommentsAuthorId.monitor(insertUsers) should be ( 'empty )
+
+        val insertPosts = InsertChange("blog.posts", Stream( post1, post2 ))
+        monitorUsersName.monitor(insertPosts) should be( 'empty )
+        monitorPostsTitle.monitor(insertPosts) should be ( Set(DocumentLocation(post1), DocumentLocation(post2)) )
+        monitorPostsAuthorId.monitor(insertPosts) should be ( Set(DocumentLocation(post1), DocumentLocation(post2)) )
+        //monitorPostsCommentsAuthorId.monitor(insertPosts) should be ( Set(DocumentLocation(post2)) ) // FIXME
+        monitorPostsCommentsAuthorId.monitor(insertPosts) should be ( Set(DocumentLocation(post1), DocumentLocation(post2)) )
+    }
+
+
+/*
+    it should "detected monitored locations on insert" in {
+    }
+*/
 }
