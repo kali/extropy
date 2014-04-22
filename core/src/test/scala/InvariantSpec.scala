@@ -16,6 +16,7 @@ posts: ( _id, authorId, authorName*, title, searchableTitle*, comments[ { author
 
 class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll {
 
+    // some rules
     val searchableTitleRule = Rule(     CollectionContainer("blog.posts"),
                                         SameDocumentContact(CollectionContainer("blog.posts")),
                                         StringNormalizationProcessor("title", "searchableTitle"))
@@ -36,6 +37,7 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
                                         FollowKeyContact("blog.users", "authorId"),
                                         CopyFieldsProcessor(List(CopyField("name", "authorName"))))
 
+    // some monitored fields
     val monitorUsersName = MonitoredField(CollectionContainer("blog.users"), "name")
     val monitorPostsTitle = MonitoredField(CollectionContainer("blog.posts"), "title")
     val monitorPostsAuthorId = MonitoredField(CollectionContainer("blog.posts"), "authorId")
@@ -51,6 +53,7 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
         authorNameInComment.monitoredFields should be(Set( monitorPostsCommentsAuthorId, monitorUsersName ))
     }
 
+    // some data
     val userLiz = MongoDBObject("_id" -> "liz", "name" -> "Elizabeth Lemon")
     val userCatLady = MongoDBObject("_id" -> "catLady")
 
@@ -58,10 +61,16 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
     val post2 = MongoDBObject("_id" -> "post2", "title" -> "Title for Post 2", "authorId" -> "liz",
                     "comments" -> List(MongoDBObject("authorId" -> "jack")))
 
+    // some ops
+    val setNameOnUserLiz = ModifiersUpdateChange("blog.users", MongoDBObject("_id" -> "liz"),
+        MongoDBObject("$set" -> MongoDBObject("name" -> "Elizabeth Miervaldis Lemon")))
+    val setTitleOnPost1 = ModifiersUpdateChange("blog.posts", MongoDBObject("_id" -> "post1"),
+        MongoDBObject("$set" -> MongoDBObject("title" -> "Other title for post 1")))
+
     it should "identify monitor field in ModifiersUpdateChange" in {
-        val setNameOnUsers = ModifiersUpdateChange("blogs.users", MongoDBObject("_id" -> "liz"),
+        val setNameOnUserLiz = ModifiersUpdateChange("blogs.users", MongoDBObject("_id" -> "liz"),
             MongoDBObject("$set" -> MongoDBObject("name" -> "Elizabeth Miervaldis Lemon")))
-        setNameOnUsers.impactedFields should be ( Set("name") )
+        setNameOnUserLiz.impactedFields should be ( Set("name") )
     }
 
     it should "monitor inserts" in {
@@ -111,12 +120,10 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
     }
 
     it should "monitor modifiers update" in {
-        val setNameOnUsers = ModifiersUpdateChange("blog.users", MongoDBObject("_id" -> "liz"),
-            MongoDBObject("$set" -> MongoDBObject("name" -> "Elizabeth Miervaldis Lemon")))
-        monitorUsersName.monitor(setNameOnUsers) should be ( Set(SelectorLocation(MongoDBObject("_id" -> "liz"))) )
-        monitorPostsTitle.monitor(setNameOnUsers) should be ( 'empty )
-        monitorPostsAuthorId.monitor(setNameOnUsers) should be ( 'empty )
-        monitorPostsCommentsAuthorId.monitor(setNameOnUsers) should be ( 'empty )
+        monitorUsersName.monitor(setNameOnUserLiz) should be ( Set(SelectorLocation(MongoDBObject("_id" -> "liz"))) )
+        monitorPostsTitle.monitor(setNameOnUserLiz) should be ( 'empty )
+        monitorPostsAuthorId.monitor(setNameOnUserLiz) should be ( 'empty )
+        monitorPostsCommentsAuthorId.monitor(setNameOnUserLiz) should be ( 'empty )
 
         val setNotNameOnUsers = ModifiersUpdateChange("blog.users", MongoDBObject("_id" -> "liz"),
             MongoDBObject("$set" -> MongoDBObject("role" -> "Producer")))
@@ -124,6 +131,23 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
         monitorPostsTitle.monitor(setNotNameOnUsers) should be ( 'empty )
         monitorPostsAuthorId.monitor(setNotNameOnUsers) should be ( 'empty )
         monitorPostsCommentsAuthorId.monitor(setNotNameOnUsers) should be ( 'empty )
+    }
+
+    it should "back propagate dirty location" in {
+        val same = SameDocumentContact(CollectionContainer("blog.posts"))
+        same.backPropagate(SelectorLocation(MongoDBObject("_id" -> "post1"))) should be (SelectorLocation(MongoDBObject("_id" -> "post1")))
+        val follow = FollowKeyContact("blog.users", "authorId")
+        follow.backPropagate(SelectorLocation(MongoDBObject("_id" -> "liz"))) should be (SelectorLocation(MongoDBObject("authorId" -> "liz")))
+/*
+        val reverse = ReverseKeyContact(CollectionContainer("blog.posts"), "authorId")
+        reverse.backPropagate(SelectorLocation(MongoDBObject("_id" -> "post1"))) should be (SelectorLocation(MongoDBObject("_id" -> "liz")))
+        ReverseKeyContact(SubCollectionContainer("blog.posts","comments"), "authorId"),
+        FollowKeyContact("blog.users", "authorId"),
+*/
+    }
+
+    it should "identify dirtied sets for various modifiers update" in {
+        searchableTitleRule.dirtiedSet( setTitleOnPost1 ) should be( Set(SelectorLocation(MongoDBObject("_id" -> "post1"))) )
     }
 
 /*

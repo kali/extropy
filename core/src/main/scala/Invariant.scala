@@ -62,8 +62,8 @@ case class MonitoredField(container:Container, field:String) {
 }
 
 case class Rule(container:Container, contact:Contact, processor:Processor) {
-    val monitoredFields:Set[MonitoredField] = (
-        processor.monitoredFields.map( MonitoredField(contact.processorContainer, _ ) )
+    val processorMonitoredFields = processor.monitoredFields.map( MonitoredField(contact.processorContainer, _) )
+    val monitoredFields:Set[MonitoredField] = ( processorMonitoredFields
         ++ contact.localyMonitoredFields.map( MonitoredField( container, _ ) )
         ++ contact.processorMonitoredFields.map( MonitoredField( contact.processorContainer, _ ) )
     )
@@ -78,8 +78,11 @@ case class Rule(container:Container, contact:Contact, processor:Processor) {
 */
     }
 
-/*
     def dirtiedSet(op:Change):Set[Location] =
+        processorMonitoredFields.flatMap( _.monitor(op) ).map( contact.backPropagate(_) )
+/*
+        ++ contact.localyMonitoredFields.map( MonitoredField( container, _ ) )
+        ++ contact.processorMonitoredFields.map( MonitoredField( contact.processorContainer, _ ) )
         monitoredFields.
         case InsertChange(writtenCollection, documents) => Set()
         case FullBodyUpdateChange(writtenCollection, selector, update) =>
@@ -129,9 +132,21 @@ case class SubCollectionContainer(collectionFullName:String, arrayField:String) 
 
 // LOCATION
 
-abstract class Location { }
-case class DocumentLocation(dbo:DBObject) extends Location
-case class SelectorLocation(selector:DBObject) extends Location
+abstract class Location {
+    def asById:Option[AnyRef]
+}
+case class DocumentLocation(dbo:DBObject) extends Location {
+    def asById:Option[AnyRef] = dbo.getAs[AnyRef]("_id")
+}
+case class SelectorLocation(selector:DBObject) extends Location {
+    def asById:Option[AnyRef] =
+        if(selector.size == 1 && selector.keys.head == "_id" &&
+            !selector.values.head.isInstanceOf[DBObject] &&
+            !selector.values.head.isInstanceOf[java.util.regex.Pattern])
+            Some(selector.values.head)
+        else
+            None
+}
 
 // CONTACTS
 
@@ -141,6 +156,8 @@ abstract class Contact {
     def processorContainer:Container
     def localyMonitoredFields:Set[String]
     def processorMonitoredFields:Set[String]
+    def backPropagate(location:Location):Location
+
 //    def alterWrite(rule:Rule, change:Change):Change
 }
 
@@ -149,6 +166,7 @@ case class SameDocumentContact(container:Container) extends Contact {
     def processorContainer:Container = container
     def localyMonitoredFields = Set()
     def processorMonitoredFields = Set()
+    def backPropagate(location:Location):Location = location
 /*
     def alterWrite(rule:Rule, change:Change):Change = change match {
         case insert:InsertChange => insert.copy(
@@ -170,6 +188,9 @@ case class FollowKeyContact(collectionName:String, localFieldName:String) extend
     def processorContainer:Container = CollectionContainer(collectionName)
     val localyMonitoredFields = Set(localFieldName)
     val processorMonitoredFields:Set[String] = Set()
+    def backPropagate(location:Location):Location = location.asById match {
+        case Some(id) => SelectorLocation(MongoDBObject(localFieldName -> id))
+    }
 /*
     def alterWrite(rule:Rule, change:Change):Change = change match {
         case insert:InsertChange => insert.copy(
@@ -191,6 +212,7 @@ case class ReverseKeyContact(container:Container, remoteFieldName:String) extend
     def processorContainer:Container = container
     val localyMonitoredFields:Set[String] = Set()
     val processorMonitoredFields = Set(remoteFieldName)
+    def backPropagate(location:Location):Location = location
 }
 
 // PROCESSORS
