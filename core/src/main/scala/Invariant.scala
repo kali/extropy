@@ -41,7 +41,7 @@ object InvariantStatus extends Enumeration {
 
 case class MonitoredField(container:Container, field:String) {
 
-    def monitor(op:Change):Set[Location] = {
+    def monitor(op:Change):Set[Location] =
         if(container.collection == op.writtenCollection)
             op match {
                 case InsertChange(writtenCollection, documents) => documents.filter( _.containsField(field) )
@@ -58,8 +58,9 @@ case class MonitoredField(container:Container, field:String) {
             }
         else
             Set()
-    }
+
 }
+
 case class Rule(container:Container, contact:Contact, processor:Processor) {
     val monitoredFields:Set[MonitoredField] = (
         processor.monitoredFields.map( MonitoredField(contact.processorContainer, _ ) )
