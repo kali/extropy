@@ -16,8 +16,6 @@ posts: ( _id, authorId, authorName*, title, searchableTitle*, comments[ { author
 
 class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll {
 
-    behavior of "Change detection"
-
     val searchableTitleRule = Rule(     CollectionContainer("blog.posts"),
                                         SameDocumentContact(CollectionContainer("blog.posts")),
                                         StringNormalizationProcessor("title", "searchableTitle"))
@@ -43,6 +41,8 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
     val monitorPostsAuthorId = MonitoredField(CollectionContainer("blog.posts"), "authorId")
     val monitorPostsCommentsAuthorId = MonitoredField(SubCollectionContainer("blog.posts", "comments"), "authorId")
 
+    behavior of "Change detection"
+
     it should "identify fields to monitor" in {
         searchableTitleRule.monitoredFields should be( Set( monitorPostsTitle ) )
         authorNameInPostRule.monitoredFields should be( Set( monitorPostsAuthorId, monitorUsersName ) )
@@ -57,6 +57,12 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
     val post1 = MongoDBObject("_id" -> "post1", "title" -> "Title for Post 1", "authorId" -> "liz")
     val post2 = MongoDBObject("_id" -> "post2", "title" -> "Title for Post 2", "authorId" -> "liz",
                     "comments" -> List(MongoDBObject("authorId" -> "jack")))
+
+    it should "identify monitor field in ModifiersUpdateChange" in {
+        val setNameOnUsers = ModifiersUpdateChange("blogs.users", MongoDBObject("_id" -> "liz"),
+            MongoDBObject("$set" -> MongoDBObject("name" -> "Elizabeth Miervaldis Lemon")))
+        setNameOnUsers.impactedFields should be ( Set("name") )
+    }
 
     it should "monitor inserts" in {
         val insertUsers = InsertChange("blog.users", Stream( userLiz, userCatLady ))
@@ -88,6 +94,36 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
         monitorPostsTitle.monitor(deletePosts) should be ( Set(SelectorLocation(deletePosts.selector.asInstanceOf[DBObject])) )
         monitorPostsAuthorId.monitor(deletePosts) should be ( Set(SelectorLocation(deletePosts.selector.asInstanceOf[DBObject])) )
         monitorPostsCommentsAuthorId.monitor(deletePosts) should be ( Set(SelectorLocation(deletePosts.selector.asInstanceOf[DBObject])) )
+    }
+
+    it should "monitor full body update" in {
+        val fbuUsers = FullBodyUpdateChange("blog.users", MongoDBObject("_id" -> "liz"), userLiz)
+        monitorUsersName.monitor(fbuUsers) should be( Set(SelectorLocation(fbuUsers.selector.asInstanceOf[DBObject])) )
+        monitorPostsTitle.monitor(fbuUsers) should be ( 'empty )
+        monitorPostsAuthorId.monitor(fbuUsers) should be ( 'empty )
+        monitorPostsCommentsAuthorId.monitor(fbuUsers) should be ( 'empty )
+
+        val fbuPosts = FullBodyUpdateChange("blog.posts", MongoDBObject("_id" -> "post1"), post1)
+        monitorUsersName.monitor(fbuPosts) should be( 'empty )
+        monitorPostsTitle.monitor(fbuPosts) should be ( Set(SelectorLocation(fbuPosts.selector.asInstanceOf[DBObject])) )
+        monitorPostsAuthorId.monitor(fbuPosts) should be ( Set(SelectorLocation(fbuPosts.selector.asInstanceOf[DBObject])) )
+        monitorPostsCommentsAuthorId.monitor(fbuPosts) should be ( Set(SelectorLocation(fbuPosts.selector.asInstanceOf[DBObject])) )
+    }
+
+    it should "monitor modifiers update" in {
+        val setNameOnUsers = ModifiersUpdateChange("blog.users", MongoDBObject("_id" -> "liz"),
+            MongoDBObject("$set" -> MongoDBObject("name" -> "Elizabeth Miervaldis Lemon")))
+        monitorUsersName.monitor(setNameOnUsers) should be ( Set(SelectorLocation(MongoDBObject("_id" -> "liz"))) )
+        monitorPostsTitle.monitor(setNameOnUsers) should be ( 'empty )
+        monitorPostsAuthorId.monitor(setNameOnUsers) should be ( 'empty )
+        monitorPostsCommentsAuthorId.monitor(setNameOnUsers) should be ( 'empty )
+
+        val setNotNameOnUsers = ModifiersUpdateChange("blog.users", MongoDBObject("_id" -> "liz"),
+            MongoDBObject("$set" -> MongoDBObject("role" -> "Producer")))
+        monitorUsersName.monitor(setNotNameOnUsers) should be ( 'empty )
+        monitorPostsTitle.monitor(setNotNameOnUsers) should be ( 'empty )
+        monitorPostsAuthorId.monitor(setNotNameOnUsers) should be ( 'empty )
+        monitorPostsCommentsAuthorId.monitor(setNotNameOnUsers) should be ( 'empty )
     }
 
 /*

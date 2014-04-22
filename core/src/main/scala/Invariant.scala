@@ -16,9 +16,11 @@ abstract sealed class Change {
 }
 
 case class FullBodyUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change
-case class ModifiersUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change
 case class InsertChange(writtenCollection:String, documents:Stream[BSONObject]) extends Change
 case class DeleteChange(writtenCollection:String, selector:BSONObject) extends Change
+case class ModifiersUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change {
+    def impactedFields:Set[String] = update.asInstanceOf[DBObject].values.flatMap( _.asInstanceOf[DBObject].keys ).toSet
+}
 
 
 case class Invariant(   _id:ObjectId, rule:Rule, emlp:MongoLock, statusChanging:Boolean=false,
@@ -38,17 +40,25 @@ object InvariantStatus extends Enumeration {
 }
 
 case class MonitoredField(container:Container, field:String) {
-    def monitor(op:Change):Set[Location] =
+
+    def monitor(op:Change):Set[Location] = {
         if(container.collection == op.writtenCollection)
             op match {
                 case InsertChange(writtenCollection, documents) => documents.filter( _.containsField(field) )
                         .map( d => DocumentLocation(d.asInstanceOf[DBObject]) ).toSet
                 case DeleteChange(writtenCollection, selector) =>
                     Set(SelectorLocation(selector.asInstanceOf[DBObject]))
-                case _ => Set()
+                case muc @ ModifiersUpdateChange(writtenCollection, selector, update) =>
+                    if(muc.impactedFields.contains(field))
+                        Set(SelectorLocation(selector.asInstanceOf[DBObject]))
+                    else
+                        Set()
+                case FullBodyUpdateChange(writtenCollection, selector, update) =>
+                    Set(SelectorLocation(selector.asInstanceOf[DBObject]))
             }
         else
             Set()
+    }
 }
 case class Rule(container:Container, contact:Contact, processor:Processor) {
     val monitoredFields:Set[MonitoredField] = (
