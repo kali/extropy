@@ -134,18 +134,25 @@ case class SubCollectionContainer(collectionFullName:String, arrayField:String) 
 
 abstract class Location {
     def asById:Option[AnyRef]
+    def asSelector:Option[DBObject]
 }
 case class DocumentLocation(dbo:DBObject) extends Location {
-    def asById:Option[AnyRef] = dbo.getAs[AnyRef]("_id")
+    override def asById:Option[AnyRef] = dbo.getAs[AnyRef]("_id")
+    override def asSelector:Option[DBObject] = asById.map( id => MongoDBObject("_id" -> id) )
 }
 case class SelectorLocation(selector:DBObject) extends Location {
-    def asById:Option[AnyRef] =
+    override def asById:Option[AnyRef] =
         if(selector.size == 1 && selector.keys.head == "_id" &&
             !selector.values.head.isInstanceOf[DBObject] &&
             !selector.values.head.isInstanceOf[java.util.regex.Pattern])
             Some(selector.values.head)
         else
             None
+    override def asSelector:Option[DBObject] = Some(selector)
+}
+case class BeforeAndAfterIdLocation(collection:Container, selector:DBObject, field:String) extends Location {
+    def asById:Option[AnyRef] = None
+    def asSelector = throw new NotImplementedError
 }
 
 // CONTACTS
@@ -212,7 +219,7 @@ case class ReverseKeyContact(container:Container, remoteFieldName:String) extend
     def processorContainer:Container = container
     val localyMonitoredFields:Set[String] = Set()
     val processorMonitoredFields = Set(remoteFieldName)
-    def backPropagate(location:Location):Location = location
+    def backPropagate(location:Location):Location = BeforeAndAfterIdLocation(container, location.asSelector.get, remoteFieldName)
 }
 
 // PROCESSORS

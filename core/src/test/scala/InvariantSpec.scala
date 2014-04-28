@@ -136,12 +136,21 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
     it should "back propagate dirty location" in {
         val same = SameDocumentContact(CollectionContainer("blog.posts"))
         same.backPropagate(SelectorLocation(MongoDBObject("_id" -> "post1"))) should be (SelectorLocation(MongoDBObject("_id" -> "post1")))
+
+        // when user information change, I need to flag dirty all posts with matching authorId
         val follow = FollowKeyContact("blog.users", "authorId")
         follow.backPropagate(SelectorLocation(MongoDBObject("_id" -> "liz"))) should be (SelectorLocation(MongoDBObject("authorId" -> "liz")))
+
+        // when authorId in a post change, I need to flag dirty users which id was the previous value, and the one with new value (post count)
+        val reverseTop = ReverseKeyContact(CollectionContainer("blog.posts"), "authorId")
+        reverseTop.backPropagate(SelectorLocation(MongoDBObject("_id" -> "post1"))) should be (BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), MongoDBObject("_id" -> "post1"), "authorId"))
+
+        // when authorId in a comment change, I need to flag dirty users which id was the previous value, and the one with new value (comment count)
+        val reverseSub = ReverseKeyContact(SubCollectionContainer("blog.posts","comments"), "authorId")
+        reverseSub.backPropagate(SelectorLocation(MongoDBObject("comments._id" -> "comment1"))) should be (BeforeAndAfterIdLocation(SubCollectionContainer("blog.posts", "comments"), MongoDBObject("comments._id" -> "comment1"), "authorId"))
+
+        // when user information change, I need to flag dirty all posts with matching authorId
 /*
-        val reverse = ReverseKeyContact(CollectionContainer("blog.posts"), "authorId")
-        reverse.backPropagate(SelectorLocation(MongoDBObject("_id" -> "post1"))) should be (SelectorLocation(MongoDBObject("_id" -> "liz")))
-        ReverseKeyContact(SubCollectionContainer("blog.posts","comments"), "authorId"),
         FollowKeyContact("blog.users", "authorId"),
 */
     }
