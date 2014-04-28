@@ -63,8 +63,8 @@ case class MonitoredField(container:Container, field:String) {
 
 case class Rule(container:Container, contact:Contact, processor:Processor) {
     val processorMonitoredFields = processor.monitoredFields.map( MonitoredField(contact.processorContainer, _) )
-    val monitoredFields:Set[MonitoredField] = ( processorMonitoredFields
-        ++ contact.localyMonitoredFields.map( MonitoredField( container, _ ) )
+    val contactLocalyMonitoredFields = contact.localyMonitoredFields.map( MonitoredField(container, _) )
+    val monitoredFields:Set[MonitoredField] = ( processorMonitoredFields ++ contactLocalyMonitoredFields
         ++ contact.processorMonitoredFields.map( MonitoredField( contact.processorContainer, _ ) )
     )
 //    def monitoredCollections:List[String] = contact.monitoredCollections(container)
@@ -79,9 +79,9 @@ case class Rule(container:Container, contact:Contact, processor:Processor) {
     }
 
     def dirtiedSet(op:Change):Set[Location] =
-        processorMonitoredFields.flatMap( _.monitor(op) ).map( contact.backPropagate(_) )
+        processorMonitoredFields.flatMap( _.monitor(op) ).map( contact.backPropagate(_) ) ++
+        contactLocalyMonitoredFields.flatMap( _.monitor(op) )
 /*
-        ++ contact.localyMonitoredFields.map( MonitoredField( container, _ ) )
         ++ contact.processorMonitoredFields.map( MonitoredField( contact.processorContainer, _ ) )
         monitoredFields.
         case InsertChange(writtenCollection, documents) => Set()

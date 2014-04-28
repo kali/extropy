@@ -55,68 +55,77 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
 
     // some data
     val userLiz = MongoDBObject("_id" -> "liz", "name" -> "Elizabeth Lemon")
+    val userJack = MongoDBObject("_id" -> "jack", "name" -> "John Francis \"Jack\" Donaghy")
     val userCatLady = MongoDBObject("_id" -> "catLady")
 
     val post1 = MongoDBObject("_id" -> "post1", "title" -> "Title for Post 1", "authorId" -> "liz")
     val post2 = MongoDBObject("_id" -> "post2", "title" -> "Title for Post 2", "authorId" -> "liz",
                     "comments" -> List(MongoDBObject("authorId" -> "jack")))
 
-    // some ops
+    // some inserts
+    val insertUserLiz = InsertChange("blog.users", Stream( userLiz ))
+    val insertUsers = InsertChange("blog.users", Stream( userLiz, userJack, userCatLady ))
+    val insertNotUsers = InsertChange("blog.not-user", Stream( userLiz, userCatLady ))
+    val insertPost1 = InsertChange("blog.posts", Stream( post1 ))
+    val insertPosts = InsertChange("blog.posts", Stream( post1, post2 ))
+
+    // some modifiers updates
     val setNameOnUserLiz = ModifiersUpdateChange("blog.users", MongoDBObject("_id" -> "liz"),
         MongoDBObject("$set" -> MongoDBObject("name" -> "Elizabeth Miervaldis Lemon")))
     val setTitleOnPost1 = ModifiersUpdateChange("blog.posts", MongoDBObject("_id" -> "post1"),
         MongoDBObject("$set" -> MongoDBObject("title" -> "Other title for post 1")))
+    val setNotNameOnUsers = ModifiersUpdateChange("blog.users", MongoDBObject("_id" -> "liz"),
+        MongoDBObject("$set" -> MongoDBObject("role" -> "Producer")))
+
+    // some full body updates
+    val fbuUserLiz = FullBodyUpdateChange("blog.users", MongoDBObject("_id" -> "liz"), userLiz)
+    val fbuPost1 = FullBodyUpdateChange("blog.posts", MongoDBObject("_id" -> "post1"), post1)
+
+    // some delete
+    val deleteUserLiz = DeleteChange("blog.users", MongoDBObject("_id" -> "liz"))
+    val deletePost1 = DeleteChange("blog.posts", MongoDBObject("_id" -> "post1"))
 
     it should "identify monitor field in ModifiersUpdateChange" in {
-        val setNameOnUserLiz = ModifiersUpdateChange("blogs.users", MongoDBObject("_id" -> "liz"),
-            MongoDBObject("$set" -> MongoDBObject("name" -> "Elizabeth Miervaldis Lemon")))
         setNameOnUserLiz.impactedFields should be ( Set("name") )
     }
 
     it should "monitor inserts" in {
-        val insertUsers = InsertChange("blog.users", Stream( userLiz, userCatLady ))
-        monitorUsersName.monitor(insertUsers) should be( Set(DocumentLocation(userLiz)) )
+        monitorUsersName.monitor(insertUsers) should be( Set(DocumentLocation(userLiz),DocumentLocation(userJack)) )
         monitorPostsTitle.monitor(insertUsers) should be ( 'empty )
         monitorPostsAuthorId.monitor(insertUsers) should be ( 'empty )
         monitorPostsCommentsAuthorId.monitor(insertUsers) should be ( 'empty )
 
-        val insertPosts = InsertChange("blog.posts", Stream( post1, post2 ))
         monitorUsersName.monitor(insertPosts) should be( 'empty )
         monitorPostsTitle.monitor(insertPosts) should be ( Set(DocumentLocation(post1), DocumentLocation(post2)) )
         monitorPostsAuthorId.monitor(insertPosts) should be ( Set(DocumentLocation(post1), DocumentLocation(post2)) )
         //monitorPostsCommentsAuthorId.monitor(insertPosts) should be ( Set(DocumentLocation(post2)) ) // FIXME
         monitorPostsCommentsAuthorId.monitor(insertPosts) should be ( Set(DocumentLocation(post1), DocumentLocation(post2)) )
 
-        val insertNotUsers = InsertChange("blog.not-user", Stream( userLiz, userCatLady ))
         monitorUsersName.monitor(insertNotUsers) should be( 'empty )
     }
 
     it should "monitor delete" in {
-        val deleteUsers = DeleteChange("blog.users", MongoDBObject("_id" -> "liz"))
-        monitorUsersName.monitor(deleteUsers) should be( Set(SelectorLocation(deleteUsers.selector.asInstanceOf[DBObject])) )
-        monitorPostsTitle.monitor(deleteUsers) should be ( 'empty )
-        monitorPostsAuthorId.monitor(deleteUsers) should be ( 'empty )
-        monitorPostsCommentsAuthorId.monitor(deleteUsers) should be ( 'empty )
+        monitorUsersName.monitor(deleteUserLiz) should be( Set(SelectorLocation(deleteUserLiz.selector.asInstanceOf[DBObject])) )
+        monitorPostsTitle.monitor(deleteUserLiz) should be ( 'empty )
+        monitorPostsAuthorId.monitor(deleteUserLiz) should be ( 'empty )
+        monitorPostsCommentsAuthorId.monitor(deleteUserLiz) should be ( 'empty )
 
-        val deletePosts = DeleteChange("blog.posts", MongoDBObject("_id" -> "post2"))
-        monitorUsersName.monitor(deletePosts) should be( 'empty )
-        monitorPostsTitle.monitor(deletePosts) should be ( Set(SelectorLocation(deletePosts.selector.asInstanceOf[DBObject])) )
-        monitorPostsAuthorId.monitor(deletePosts) should be ( Set(SelectorLocation(deletePosts.selector.asInstanceOf[DBObject])) )
-        monitorPostsCommentsAuthorId.monitor(deletePosts) should be ( Set(SelectorLocation(deletePosts.selector.asInstanceOf[DBObject])) )
+        monitorUsersName.monitor(deletePost1) should be( 'empty )
+        monitorPostsTitle.monitor(deletePost1) should be ( Set(SelectorLocation(deletePost1.selector.asInstanceOf[DBObject])) )
+        monitorPostsAuthorId.monitor(deletePost1) should be ( Set(SelectorLocation(deletePost1.selector.asInstanceOf[DBObject])) )
+        monitorPostsCommentsAuthorId.monitor(deletePost1) should be ( Set(SelectorLocation(deletePost1.selector.asInstanceOf[DBObject])) )
     }
 
     it should "monitor full body update" in {
-        val fbuUsers = FullBodyUpdateChange("blog.users", MongoDBObject("_id" -> "liz"), userLiz)
-        monitorUsersName.monitor(fbuUsers) should be( Set(SelectorLocation(fbuUsers.selector.asInstanceOf[DBObject])) )
-        monitorPostsTitle.monitor(fbuUsers) should be ( 'empty )
-        monitorPostsAuthorId.monitor(fbuUsers) should be ( 'empty )
-        monitorPostsCommentsAuthorId.monitor(fbuUsers) should be ( 'empty )
+        monitorUsersName.monitor(fbuUserLiz) should be( Set(SelectorLocation(fbuUserLiz.selector.asInstanceOf[DBObject])) )
+        monitorPostsTitle.monitor(fbuUserLiz) should be ( 'empty )
+        monitorPostsAuthorId.monitor(fbuUserLiz) should be ( 'empty )
+        monitorPostsCommentsAuthorId.monitor(fbuUserLiz) should be ( 'empty )
 
-        val fbuPosts = FullBodyUpdateChange("blog.posts", MongoDBObject("_id" -> "post1"), post1)
-        monitorUsersName.monitor(fbuPosts) should be( 'empty )
-        monitorPostsTitle.monitor(fbuPosts) should be ( Set(SelectorLocation(fbuPosts.selector.asInstanceOf[DBObject])) )
-        monitorPostsAuthorId.monitor(fbuPosts) should be ( Set(SelectorLocation(fbuPosts.selector.asInstanceOf[DBObject])) )
-        monitorPostsCommentsAuthorId.monitor(fbuPosts) should be ( Set(SelectorLocation(fbuPosts.selector.asInstanceOf[DBObject])) )
+        monitorUsersName.monitor(fbuPost1) should be( 'empty )
+        monitorPostsTitle.monitor(fbuPost1) should be ( Set(SelectorLocation(fbuPost1.selector.asInstanceOf[DBObject])) )
+        monitorPostsAuthorId.monitor(fbuPost1) should be ( Set(SelectorLocation(fbuPost1.selector.asInstanceOf[DBObject])) )
+        monitorPostsCommentsAuthorId.monitor(fbuPost1) should be ( Set(SelectorLocation(fbuPost1.selector.asInstanceOf[DBObject])) )
     }
 
     it should "monitor modifiers update" in {
@@ -125,15 +134,65 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
         monitorPostsAuthorId.monitor(setNameOnUserLiz) should be ( 'empty )
         monitorPostsCommentsAuthorId.monitor(setNameOnUserLiz) should be ( 'empty )
 
-        val setNotNameOnUsers = ModifiersUpdateChange("blog.users", MongoDBObject("_id" -> "liz"),
-            MongoDBObject("$set" -> MongoDBObject("role" -> "Producer")))
         monitorUsersName.monitor(setNotNameOnUsers) should be ( 'empty )
         monitorPostsTitle.monitor(setNotNameOnUsers) should be ( 'empty )
         monitorPostsAuthorId.monitor(setNotNameOnUsers) should be ( 'empty )
         monitorPostsCommentsAuthorId.monitor(setNotNameOnUsers) should be ( 'empty )
     }
 
-    it should "back propagate dirty location" in {
+    behavior of "a searchableTitleRule-like rule"
+
+    it should "identify dirty set for inserts" in {
+        searchableTitleRule.dirtiedSet( insertUserLiz ) should be ( 'empty )
+        searchableTitleRule.dirtiedSet( insertUsers ) should be ( 'empty )
+        searchableTitleRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
+        searchableTitleRule.dirtiedSet( insertPost1 ) should be ( Set(DocumentLocation(post1)) )
+        searchableTitleRule.dirtiedSet( insertPosts ) should be ( Set(DocumentLocation(post1),DocumentLocation(post2)) )
+    }
+
+    it should "identify dirty set for modifiers updates" in {
+        searchableTitleRule.dirtiedSet( setTitleOnPost1 ) should be( Set(SelectorLocation(MongoDBObject("_id" -> "post1"))) )
+        searchableTitleRule.dirtiedSet( setNameOnUserLiz ) should be( 'empty )
+        searchableTitleRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
+    }
+
+    it should "identify dirty set for fbu updates" in {
+        searchableTitleRule.dirtiedSet( fbuUserLiz ) should be ( 'empty )
+        searchableTitleRule.dirtiedSet( fbuPost1 ) should be ( Set(SelectorLocation(MongoDBObject("_id" -> "post1"))) )
+    }
+
+    it should "identify dirty set for delete" in {
+        searchableTitleRule.dirtiedSet( deleteUserLiz ) should be ( 'empty )
+        searchableTitleRule.dirtiedSet( deletePost1 ) should be ( Set(SelectorLocation(MongoDBObject("_id" -> "post1" ))) ) // TODO: empty would be better.
+    }
+
+    behavior of "a authorNameInPostRule rule"
+
+    it should "identify dirty set for inserts" in {
+        authorNameInPostRule.dirtiedSet( insertUserLiz ) should be ( Set(SelectorLocation(MongoDBObject("authorId" -> "liz"))) )
+        authorNameInPostRule.dirtiedSet( insertUsers ) should be ( Set(SelectorLocation(MongoDBObject("authorId" -> "liz")), SelectorLocation(MongoDBObject("authorId" -> "jack"))))
+        authorNameInPostRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
+        authorNameInPostRule.dirtiedSet( insertPost1 ) should be ( Set(DocumentLocation(post1)) )
+        authorNameInPostRule.dirtiedSet( insertPosts ) should be ( Set(DocumentLocation(post1),DocumentLocation(post2)) )
+    }
+
+    it should "identify dirty set for modifiers updates" in {
+        authorNameInPostRule.dirtiedSet( setTitleOnPost1 ) should be( 'empty )
+        authorNameInPostRule.dirtiedSet( setNameOnUserLiz ) should be( Set(SelectorLocation(MongoDBObject("authorId" -> "liz"))) )
+        authorNameInPostRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
+    }
+
+    it should "identify dirty set for fbu updates" in {
+        authorNameInPostRule.dirtiedSet( fbuUserLiz ) should be ( Set(SelectorLocation(MongoDBObject("authorId" -> "liz"))) )
+        authorNameInPostRule.dirtiedSet( fbuPost1 ) should be ( Set(SelectorLocation(MongoDBObject("_id" -> "post1"))) )
+    }
+
+    it should "identify dirty set for delete" in {
+        authorNameInPostRule.dirtiedSet( deleteUserLiz ) should be ( Set(SelectorLocation(MongoDBObject("authorId" -> "liz"))) ) // TODO: not sure about this one
+        authorNameInPostRule.dirtiedSet( deletePost1 ) should be ( Set(SelectorLocation(MongoDBObject("_id" -> "post1" ))) ) // TODO: empty should probably be better
+    }
+    /*
+    it should "back propagate locations detected by processor" in {
         val same = SameDocumentContact(CollectionContainer("blog.posts"))
         same.backPropagate(SelectorLocation(MongoDBObject("_id" -> "post1"))) should be (SelectorLocation(MongoDBObject("_id" -> "post1")))
 
@@ -154,10 +213,7 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
         FollowKeyContact("blog.users", "authorId"),
 */
     }
-
-    it should "identify dirtied sets for various modifiers update" in {
-        searchableTitleRule.dirtiedSet( setTitleOnPost1 ) should be( Set(SelectorLocation(MongoDBObject("_id" -> "post1"))) )
-    }
+*/
 
 /*
     it should "detected monitored locations on insert" in {
