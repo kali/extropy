@@ -92,6 +92,8 @@ abstract class Container {
     def iterator(payloadMongo:MongoClient):Traversable[Location]
     def collection:String
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject)
+    def dbName:String
+    def collectionName:String
 }
 
 case class CollectionContainer(collectionFullName:String) extends Container {
@@ -128,10 +130,12 @@ case class SubCollectionContainer(collectionFullName:String, arrayField:String) 
 abstract class Location {
     def asById:Option[AnyRef]
     def asSelector:Option[DBObject]
+    def save(extropy:BaseExtropyContext):Location
 }
 case class DocumentLocation(dbo:DBObject) extends Location {
     override def asById:Option[AnyRef] = dbo.getAs[AnyRef]("_id")
     override def asSelector:Option[DBObject] = asById.map( id => MongoDBObject("_id" -> id) )
+    def save(extropy:BaseExtropyContext):Location = this
 }
 case class SelectorLocation(selector:DBObject) extends Location {
     override def asById:Option[AnyRef] =
@@ -142,10 +146,13 @@ case class SelectorLocation(selector:DBObject) extends Location {
         else
             None
     override def asSelector:Option[DBObject] = Some(selector)
+    def save(extropy:BaseExtropyContext):Location = this
 }
-case class BeforeAndAfterIdLocation(collection:Container, selector:DBObject, field:String) extends Location {
+case class BeforeAndAfterIdLocation(container:Container, selector:DBObject, field:String) extends Location {
     def asById:Option[AnyRef] = None
     def asSelector = throw new NotImplementedError
+    def save(extropy:BaseExtropyContext):Location =
+        SelectorLocation(MongoDBObject("_id" -> MongoDBObject("$in" -> extropy.payloadMongo(container.dbName)(container.collectionName).find(selector,MongoDBObject(field -> 1)).toSeq)))
 }
 
 // CONTACTS

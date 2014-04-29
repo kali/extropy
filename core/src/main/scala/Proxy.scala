@@ -4,14 +4,17 @@ case class ExtropyProxy(extropy:BaseExtropyContext, optionalConfiguration:Option
 
     val configuration = optionalConfiguration.getOrElse(extropy.pullConfiguration)
 
-    def processChange(originalChange:Change):Change = {
-        configuration.invariants.foldLeft(originalChange) { (change,inv) =>
-/*
-            if(inv.rule.monitoredCollections.contains(change.writtenCollection))
-                inv.rule.alterWrite(change)
-            else
-*/
-                change
-        }
+    // Change -> preChange -> AnalysedChange
+    def preChange(originalChange:Change) = AnalysedChange(originalChange,
+        configuration.invariants.flatMap{ inv =>
+            val d = inv.rule.dirtiedSet(originalChange).map( _.save(extropy) )
+            if(!d.isEmpty) Some(inv,d) else None
+        }, originalChange)
+    case class AnalysedChange(originalChange:Change, dirtiedSet:List[(Invariant, Set[Location])], alteredChange:Change)
+
+    /*
+    def syncProcess(originalChange:Change) = {
+        val analysed = preChange(originalChange)
     }
+    */
 }

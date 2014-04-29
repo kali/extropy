@@ -26,14 +26,18 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
     }
 
     it should "leave messages on an arbitrary collection alone" in withExtropy { (extropy,id) =>
+        pending
         val proxy = ExtropyProxy(extropy)
         val original = InsertChange(s"$id.not-users", Stream(MongoDBObject("name" -> "Kali")))
+/*
         val transformed = proxy.processChange(original)
         transformed should be(original)
+*/
     }
 
     it should "transform messages on the right collection" in withExtropy { (extropy,id) =>
         pending
+/*
         val proxy = ExtropyProxy(extropy)
         val original = InsertChange(s"$id.users", Stream(MongoDBObject("name" -> "Kali")))
         val result = proxy.processChange(original)
@@ -42,5 +46,6 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
         transformed.writtenCollection should be(s"$id.users")
         transformed.documents.size should be(1)
         transformed.documents.head should be(MongoDBObject("name" -> "Kali", "normName" -> "kali"))
+*/
     }
 }
