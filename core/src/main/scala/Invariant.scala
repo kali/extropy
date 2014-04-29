@@ -61,12 +61,13 @@ case class MonitoredField(container:Container, field:String) {
 
 }
 
-case class Rule(container:Container, contact:Contact, processor:Processor) {
-    val processorMonitoredFields = processor.monitoredFields.map( MonitoredField(contact.processorContainer, _) )
-    val contactLocalyMonitoredFields = contact.localyMonitoredFields.map( MonitoredField(container, _) )
-    val monitoredFields:Set[MonitoredField] = ( processorMonitoredFields ++ contactLocalyMonitoredFields
-        ++ contact.processorMonitoredFields.map( MonitoredField( contact.processorContainer, _ ) )
-    )
+case class Rule(effectContainer:Container, contact:Contact, reaction:Reaction) {
+    val reactionFields:Set[MonitoredField] = reaction.reactionFields.map( MonitoredField(contact.reactionContainer, _) )
+    val contactEffectContainerMonitoredFields:Set[MonitoredField] = contact.effectContainerMonitoredFields.map( MonitoredField(effectContainer, _) )
+    val contactReactionContainerMonitoredFields:Set[MonitoredField] = contact.reactionContainerMonitoredFields.map( MonitoredField(contact.reactionContainer, _) )
+
+    val monitoredFields:Set[MonitoredField] = reactionFields ++ contactEffectContainerMonitoredFields ++ contactReactionContainerMonitoredFields
+
 //    def monitoredCollections:List[String] = contact.monitoredCollections(container)
     def alterWrite(op:Change):Change = op // contact.alterWrite(this, op)
     def activeSync(extropy:BaseExtropyContext) {
@@ -79,17 +80,9 @@ case class Rule(container:Container, contact:Contact, processor:Processor) {
     }
 
     def dirtiedSet(op:Change):Set[Location] =
-        processorMonitoredFields.flatMap( _.monitor(op) ).map( contact.backPropagate(_) ) ++
-        contactLocalyMonitoredFields.flatMap( _.monitor(op) )
-/*
-        ++ contact.processorMonitoredFields.map( MonitoredField( contact.processorContainer, _ ) )
-        monitoredFields.
-        case InsertChange(writtenCollection, documents) => Set()
-        case FullBodyUpdateChange(writtenCollection, selector, update) =>
-        case ModifiersUpdateChange(writtenCollection, selector, update) =>
-        case DeleteChange(writtenCollection, selector) =>
-    }
-*/
+        reactionFields.flatMap( _.monitor(op) ).map( contact.backPropagate(_) ) ++
+        contactReactionContainerMonitoredFields.flatMap( _.monitor(op) ).map( contact.backPropagate(_) ) ++
+        contactEffectContainerMonitoredFields.flatMap( _.monitor(op) )
 }
 
 // CONTAINERS
@@ -160,9 +153,9 @@ case class BeforeAndAfterIdLocation(collection:Container, selector:DBObject, fie
 @Salat
 abstract class Contact {
     def resolve(from:DBObject):Traversable[DBObject]
-    def processorContainer:Container
-    def localyMonitoredFields:Set[String]
-    def processorMonitoredFields:Set[String]
+    def reactionContainer:Container
+    def effectContainerMonitoredFields:Set[String]
+    def reactionContainerMonitoredFields:Set[String]
     def backPropagate(location:Location):Location
 
 //    def alterWrite(rule:Rule, change:Change):Change
@@ -170,9 +163,9 @@ abstract class Contact {
 
 case class SameDocumentContact(container:Container) extends Contact {
     def resolve(from:DBObject) = List(from)
-    def processorContainer:Container = container
-    def localyMonitoredFields = Set()
-    def processorMonitoredFields = Set()
+    def reactionContainer:Container = container
+    def effectContainerMonitoredFields = Set()
+    def reactionContainerMonitoredFields = Set()
     def backPropagate(location:Location):Location = location
 /*
     def alterWrite(rule:Rule, change:Change):Change = change match {
@@ -192,9 +185,9 @@ case class SameDocumentContact(container:Container) extends Contact {
 
 case class FollowKeyContact(collectionName:String, localFieldName:String) extends Contact {
     def resolve(from:DBObject) = null
-    def processorContainer:Container = CollectionContainer(collectionName)
-    val localyMonitoredFields = Set(localFieldName)
-    val processorMonitoredFields:Set[String] = Set()
+    def reactionContainer:Container = CollectionContainer(collectionName)
+    val effectContainerMonitoredFields = Set(localFieldName)
+    val reactionContainerMonitoredFields:Set[String] = Set()
     def backPropagate(location:Location):Location = location.asById match {
         case Some(id) => SelectorLocation(MongoDBObject(localFieldName -> id))
     }
@@ -214,35 +207,35 @@ case class FollowKeyContact(collectionName:String, localFieldName:String) extend
 */
 }
 
-case class ReverseKeyContact(container:Container, remoteFieldName:String) extends Contact {
+case class ReverseKeyContact(container:Container, reactionFieldName:String) extends Contact {
     def resolve(from:DBObject) = null
-    def processorContainer:Container = container
-    val localyMonitoredFields:Set[String] = Set()
-    val processorMonitoredFields = Set(remoteFieldName)
-    def backPropagate(location:Location):Location = BeforeAndAfterIdLocation(container, location.asSelector.get, remoteFieldName)
+    def reactionContainer:Container = container
+    val effectContainerMonitoredFields:Set[String] = Set("_id")
+    val reactionContainerMonitoredFields = Set(reactionFieldName)
+    def backPropagate(location:Location):Location = BeforeAndAfterIdLocation(container, location.asSelector.get, reactionFieldName)
 }
 
 // PROCESSORS
-@Salat abstract class Processor {
-    def monitoredFields:Set[String]
+@Salat abstract class Reaction {
+    def reactionFields:Set[String]
     def process(data:Traversable[DBObject]):DBObject
 }
 
 case class CopyField(from:String, to:String)
-case class CopyFieldsProcessor(fields:List[CopyField]) extends Processor {
-    val monitoredFields:Set[String] = fields.map( _.from ).toSet
+case class CopyFieldsReaction(fields:List[CopyField]) extends Reaction {
+    val reactionFields:Set[String] = fields.map( _.from ).toSet
     def process(data:Traversable[DBObject]) = MongoDBObject.empty
 }
 
-case class CountProcessor(field:String) extends Processor {
-    val monitoredFields:Set[String] = Set()
+case class CountReaction(field:String) extends Reaction {
+    val reactionFields:Set[String] = Set()
     def process(data:Traversable[DBObject]) = MongoDBObject(field -> data.size)
 }
 
 // FOR TESTS
 
-case class StringNormalizationProcessor(from:String, to:String) extends Processor {
-    val monitoredFields:Set[String] = Set(from)
+case class StringNormalizationReaction(from:String, to:String) extends Reaction {
+    val reactionFields:Set[String] = Set(from)
     def process(data:Traversable[DBObject]) = Map(to -> (data.headOption match {
         case Some(obj) => obj.get(from).toString.toLowerCase
         case None => null
@@ -253,7 +246,7 @@ case class StringNormalizationProcessor(from:String, to:String) extends Processo
 object StringNormalizationRule {
     def apply(collection:String, from:String, to:String) =
         Rule(CollectionContainer(collection), SameDocumentContact(CollectionContainer(collection)),
-                StringNormalizationProcessor(from,to))
+                StringNormalizationReaction(from,to))
 }
 
 /*

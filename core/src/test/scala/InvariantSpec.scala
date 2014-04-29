@@ -19,25 +19,26 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
     // some rules
     val searchableTitleRule = Rule(     CollectionContainer("blog.posts"),
                                         SameDocumentContact(CollectionContainer("blog.posts")),
-                                        StringNormalizationProcessor("title", "searchableTitle"))
+                                        StringNormalizationReaction("title", "searchableTitle"))
 
     val authorNameInPostRule = Rule(    CollectionContainer("blog.posts"),
                                         FollowKeyContact("blog.users", "authorId"),
-                                        CopyFieldsProcessor(List(CopyField("name", "authorName"))))
+                                        CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
     val postCountInUserRule = Rule(     CollectionContainer("blog.users"),
                                         ReverseKeyContact(CollectionContainer("blog.posts"), "authorId"),
-                                        CountProcessor("postCount"))
+                                        CountReaction("postCount"))
 
     val commentCountInUserRule = Rule(  CollectionContainer("blog.users"),
                                         ReverseKeyContact(SubCollectionContainer("blog.posts","comments"), "authorId"),
-                                        CountProcessor("commentCount"))
+                                        CountReaction("commentCount"))
 
     val authorNameInComment = Rule(     SubCollectionContainer("blog.posts","comments"),
                                         FollowKeyContact("blog.users", "authorId"),
-                                        CopyFieldsProcessor(List(CopyField("name", "authorName"))))
+                                        CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
     // some monitored fields
+    val monitorUsersId = MonitoredField(CollectionContainer("blog.users"), "_id") // id can not change, but this allow to detect insertion of users
     val monitorUsersName = MonitoredField(CollectionContainer("blog.users"), "name")
     val monitorPostsTitle = MonitoredField(CollectionContainer("blog.posts"), "title")
     val monitorPostsAuthorId = MonitoredField(CollectionContainer("blog.posts"), "authorId")
@@ -48,8 +49,8 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
     it should "identify fields to monitor" in {
         searchableTitleRule.monitoredFields should be( Set( monitorPostsTitle ) )
         authorNameInPostRule.monitoredFields should be( Set( monitorPostsAuthorId, monitorUsersName ) )
-        postCountInUserRule.monitoredFields should be( Set( monitorPostsAuthorId ) )
-        commentCountInUserRule.monitoredFields should be( Set( monitorPostsCommentsAuthorId ) )
+        postCountInUserRule.monitoredFields should be( Set( monitorPostsAuthorId, monitorUsersId ) )
+        commentCountInUserRule.monitoredFields should be( Set( monitorPostsCommentsAuthorId, monitorUsersId ) )
         authorNameInComment.monitoredFields should be(Set( monitorPostsCommentsAuthorId, monitorUsersName ))
     }
 
@@ -74,6 +75,8 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
         MongoDBObject("$set" -> MongoDBObject("name" -> "Elizabeth Miervaldis Lemon")))
     val setTitleOnPost1 = ModifiersUpdateChange("blog.posts", MongoDBObject("_id" -> "post1"),
         MongoDBObject("$set" -> MongoDBObject("title" -> "Other title for post 1")))
+    val setAuthorIdOnPost1 = ModifiersUpdateChange("blog.posts", MongoDBObject("_id" -> "post1"),
+        MongoDBObject("$set" -> MongoDBObject("authorId" -> "jack")))
     val setNotNameOnUsers = ModifiersUpdateChange("blog.users", MongoDBObject("_id" -> "liz"),
         MongoDBObject("$set" -> MongoDBObject("role" -> "Producer")))
 
@@ -154,6 +157,7 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
         searchableTitleRule.dirtiedSet( setTitleOnPost1 ) should be( Set(SelectorLocation(MongoDBObject("_id" -> "post1"))) )
         searchableTitleRule.dirtiedSet( setNameOnUserLiz ) should be( 'empty )
         searchableTitleRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
+        searchableTitleRule.dirtiedSet( setAuthorIdOnPost1 ) should be( 'empty )
     }
 
     it should "identify dirty set for fbu updates" in {
@@ -170,7 +174,8 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
 
     it should "identify dirty set for inserts" in {
         authorNameInPostRule.dirtiedSet( insertUserLiz ) should be ( Set(SelectorLocation(MongoDBObject("authorId" -> "liz"))) )
-        authorNameInPostRule.dirtiedSet( insertUsers ) should be ( Set(SelectorLocation(MongoDBObject("authorId" -> "liz")), SelectorLocation(MongoDBObject("authorId" -> "jack"))))
+        authorNameInPostRule.dirtiedSet( insertUsers ) should be ( Set( SelectorLocation(MongoDBObject("authorId" -> "liz")),
+                                                                        SelectorLocation(MongoDBObject("authorId" -> "jack"))))
         authorNameInPostRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
         authorNameInPostRule.dirtiedSet( insertPost1 ) should be ( Set(DocumentLocation(post1)) )
         authorNameInPostRule.dirtiedSet( insertPosts ) should be ( Set(DocumentLocation(post1),DocumentLocation(post2)) )
@@ -180,6 +185,7 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
         authorNameInPostRule.dirtiedSet( setTitleOnPost1 ) should be( 'empty )
         authorNameInPostRule.dirtiedSet( setNameOnUserLiz ) should be( Set(SelectorLocation(MongoDBObject("authorId" -> "liz"))) )
         authorNameInPostRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
+        authorNameInPostRule.dirtiedSet( setAuthorIdOnPost1 ) should be( Set(SelectorLocation(MongoDBObject("_id" -> "post1"))) )
     }
 
     it should "identify dirty set for fbu updates" in {
@@ -191,6 +197,39 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
         authorNameInPostRule.dirtiedSet( deleteUserLiz ) should be ( Set(SelectorLocation(MongoDBObject("authorId" -> "liz"))) ) // TODO: not sure about this one
         authorNameInPostRule.dirtiedSet( deletePost1 ) should be ( Set(SelectorLocation(MongoDBObject("_id" -> "post1" ))) ) // TODO: empty should probably be better
     }
+
+    behavior of "a postCountInUserRule rule"
+
+    it should "identify dirty set for inserts" in {
+        postCountInUserRule.dirtiedSet( insertUserLiz ) should be ( Set(DocumentLocation(userLiz)) )
+        postCountInUserRule.dirtiedSet( insertUsers ) should be ( Set(DocumentLocation(userLiz), DocumentLocation(userJack), DocumentLocation(userCatLady)))
+        postCountInUserRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
+        postCountInUserRule.dirtiedSet( insertPost1 ) should be ( Set( BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), MongoDBObject("_id" -> "post1"), "authorId")) )
+        postCountInUserRule.dirtiedSet( insertPosts ) should be ( Set(
+                                                    BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), MongoDBObject("_id" -> "post1"), "authorId"),
+                                                    BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), MongoDBObject("_id" -> "post2"), "authorId") ) )
+    }
+
+    it should "identify dirty set for modifiers updates" in {
+        postCountInUserRule.dirtiedSet( setTitleOnPost1 ) should be( 'empty )
+        postCountInUserRule.dirtiedSet( setNameOnUserLiz ) should be( 'empty )
+        postCountInUserRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
+        postCountInUserRule.dirtiedSet( setAuthorIdOnPost1 ) should be( Set(
+                                                    BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), MongoDBObject("_id" -> "post1"), "authorId") ) )
+    }
+
+    it should "identify dirty set for fbu updates" in {
+        postCountInUserRule.dirtiedSet( fbuUserLiz ) should be ( Set(SelectorLocation(MongoDBObject("_id" -> "liz"))) )
+        postCountInUserRule.dirtiedSet( fbuPost1 ) should be ( Set(
+                                                    BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), MongoDBObject("_id" -> "post1"), "authorId") ) )
+    }
+
+    it should "identify dirty set for delete" in {
+        postCountInUserRule.dirtiedSet( deleteUserLiz ) should be ( Set(SelectorLocation(MongoDBObject("_id" -> "liz"))) ) // TODO: optimize me
+        postCountInUserRule.dirtiedSet( deletePost1 ) should be ( Set(
+                                                    BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), MongoDBObject("_id" -> "post1"), "authorId") ) ) // TODO: optimize me
+    }
+
     /*
     it should "back propagate locations detected by processor" in {
         val same = SameDocumentContact(CollectionContainer("blog.posts"))
