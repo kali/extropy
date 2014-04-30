@@ -47,14 +47,14 @@ case class MonitoredField(container:Container, field:String) {
                 case InsertChange(writtenCollection, documents) => documents.filter( _.containsField(field) )
                         .map( d => DocumentLocation(d.asInstanceOf[DBObject]) ).toSet
                 case DeleteChange(writtenCollection, selector) =>
-                    Set(SelectorLocation(selector.asInstanceOf[DBObject]))
+                    Set(SelectorLocation(selector.asInstanceOf[DBObject]).optimize)
                 case muc @ ModifiersUpdateChange(writtenCollection, selector, update) =>
                     if(muc.impactedFields.contains(field))
-                        Set(SelectorLocation(selector.asInstanceOf[DBObject]))
+                        Set(SelectorLocation(selector.asInstanceOf[DBObject]).optimize)
                     else
                         Set()
                 case FullBodyUpdateChange(writtenCollection, selector, update) =>
-                    Set(SelectorLocation(selector.asInstanceOf[DBObject]))
+                    Set(SelectorLocation(selector.asInstanceOf[DBObject]).optimize)
             }
         else
             Set()
@@ -119,34 +119,41 @@ case class SubCollectionContainer(collectionFullName:String, arrayField:String) 
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {}
 }
 
-// LOCATION
+// LOCATIONS
 
 abstract class Location {
-    def asById:Option[AnyRef]
-    def asSelector:Option[DBObject]
+    def asIdLocation:IdLocation
+    def asSelectorLocation:SelectorLocation
     def save(extropy:BaseExtropyContext):Location
+    def optimize:Location = this
 }
 case class DocumentLocation(dbo:DBObject) extends Location {
-    override def asById:Option[AnyRef] = dbo.getAs[AnyRef]("_id")
-    override def asSelector:Option[DBObject] = asById.map( id => MongoDBObject("_id" -> id) )
+    override def asIdLocation:IdLocation = IdLocation(dbo.getAs[AnyRef]("_id").get)
+    override def asSelectorLocation:SelectorLocation = asIdLocation.asSelectorLocation
     def save(extropy:BaseExtropyContext):Location = this
 }
 case class SelectorLocation(selector:DBObject) extends Location {
-    override def asById:Option[AnyRef] =
-        if(selector.size == 1 && selector.keys.head == "_id" &&
+    def asIdLocationOption = if(selector.size == 1 && selector.keys.head == "_id" &&
             !selector.values.head.isInstanceOf[DBObject] &&
             !selector.values.head.isInstanceOf[java.util.regex.Pattern])
-            Some(selector.values.head)
+            Some(IdLocation(selector.values.head))
         else
             None
-    override def asSelector:Option[DBObject] = Some(selector)
+    override def asIdLocation:IdLocation = asIdLocationOption.get
+    override def asSelectorLocation = this
+    override def optimize = asIdLocationOption.getOrElse(this)
     def save(extropy:BaseExtropyContext):Location = this
 }
-case class BeforeAndAfterIdLocation(container:Container, selector:DBObject, field:String) extends Location {
-    def asById:Option[AnyRef] = None
-    def asSelector = throw new NotImplementedError
+case class IdLocation(id:AnyRef) extends Location {
+    def asSelectorLocation = SelectorLocation(MongoDBObject("_id" -> id))
+    def asIdLocation = this
+    def save(extropy:BaseExtropyContext):Location = this
+}
+case class BeforeAndAfterIdLocation(container:Container, location:Location, field:String) extends Location {
+    def asIdLocation = throw new IllegalStateException
+    def asSelectorLocation = throw new IllegalStateException
     def save(extropy:BaseExtropyContext):Location =
-        SelectorLocation(MongoDBObject("_id" -> MongoDBObject("$in" -> extropy.payloadMongo(container.dbName)(container.collectionName).find(selector,MongoDBObject(field -> 1)).toSeq)))
+        SelectorLocation(MongoDBObject("_id" -> MongoDBObject("$in" -> extropy.payloadMongo(container.dbName)(container.collectionName).find(location.asSelectorLocation.selector,MongoDBObject(field -> 1)).toSeq))).optimize
 }
 
 // TIE
@@ -167,19 +174,18 @@ case class SameDocumentTie(container:Container) extends Tie {
     def reactionContainerMonitoredFields = Set()
 
     def resolve(from:Location) = from
-    def backPropagate(location:Location):Location = location
+    def backPropagate(location:Location):Location = location.optimize
 }
 
 case class FollowKeyTie(collectionName:String, localFieldName:String) extends Tie {
     def reactionContainer:Container = CollectionContainer(collectionName)
     val effectContainerMonitoredFields = Set(localFieldName)
     val reactionContainerMonitoredFields:Set[String] = Set()
+
     def resolve(from:Location) = from match {
-        case DocumentLocation(doc) => SelectorLocation(MongoDBObject("_id" -> doc.getAs[AnyRef](localFieldName)))
+        case DocumentLocation(doc) => IdLocation(doc.getAs[AnyRef](localFieldName).get)
     }
-    def backPropagate(location:Location):Location = location.asById match {
-        case Some(id) => SelectorLocation(MongoDBObject(localFieldName -> id))
-    }
+    def backPropagate(location:Location):Location = SelectorLocation(MongoDBObject(localFieldName -> location.asIdLocation.id)).optimize
 }
 
 case class ReverseKeyTie(container:Container, reactionFieldName:String) extends Tie {
@@ -187,9 +193,9 @@ case class ReverseKeyTie(container:Container, reactionFieldName:String) extends 
     val effectContainerMonitoredFields:Set[String] = Set("_id")
     val reactionContainerMonitoredFields = Set(reactionFieldName)
     def resolve(from:Location) = from match {
-        case DocumentLocation(doc) => SelectorLocation(MongoDBObject(reactionFieldName -> doc.getAs[AnyRef]("_id")))
+        case DocumentLocation(doc) => SelectorLocation(MongoDBObject(reactionFieldName -> doc.getAs[AnyRef]("_id"))).optimize
     }
-    def backPropagate(location:Location):Location = BeforeAndAfterIdLocation(container, location.asSelector.get, reactionFieldName)
+    def backPropagate(location:Location):Location = BeforeAndAfterIdLocation(container, location.asSelectorLocation.optimize, reactionFieldName)
 }
 
 // PROCESSORS
