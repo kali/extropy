@@ -61,28 +61,28 @@ case class MonitoredField(container:Container, field:String) {
 
 }
 
-case class Rule(effectContainer:Container, contact:Contact, reaction:Reaction) {
-    val reactionFields:Set[MonitoredField] = reaction.reactionFields.map( MonitoredField(contact.reactionContainer, _) )
-    val contactEffectContainerMonitoredFields:Set[MonitoredField] = contact.effectContainerMonitoredFields.map( MonitoredField(effectContainer, _) )
-    val contactReactionContainerMonitoredFields:Set[MonitoredField] = contact.reactionContainerMonitoredFields.map( MonitoredField(contact.reactionContainer, _) )
+case class Rule(effectContainer:Container, tie:Tie, reaction:Reaction) {
+    val reactionFields:Set[MonitoredField] = reaction.reactionFields.map( MonitoredField(tie.reactionContainer, _) )
+    val tieEffectContainerMonitoredFields:Set[MonitoredField] = tie.effectContainerMonitoredFields.map( MonitoredField(effectContainer, _) )
+    val tieReactionContainerMonitoredFields:Set[MonitoredField] = tie.reactionContainerMonitoredFields.map( MonitoredField(tie.reactionContainer, _) )
 
-    val monitoredFields:Set[MonitoredField] = reactionFields ++ contactEffectContainerMonitoredFields ++ contactReactionContainerMonitoredFields
+    val monitoredFields:Set[MonitoredField] = reactionFields ++ tieEffectContainerMonitoredFields ++ tieReactionContainerMonitoredFields
 
-//    def monitoredCollections:List[String] = contact.monitoredCollections(container)
-    def alterWrite(op:Change):Change = op // contact.alterWrite(this, op)
+//    def monitoredCollections:List[String] = tie.monitoredCollections(container)
+    def alterWrite(op:Change):Change = op // tie.alterWrite(this, op)
     def activeSync(extropy:BaseExtropyContext) {
 /*
         container.iterator(extropy.payloadMongo).foreach { location =>
-            val values = processor.process(contact.resolve(location.dbo))
+            val values = processor.process(tie.resolve(location.dbo))
             container.setValues(extropy.payloadMongo, location, values)
         }
 */
     }
 
     def dirtiedSet(op:Change):Set[Location] =
-        reactionFields.flatMap( _.monitor(op) ).map( contact.backPropagate(_) ) ++
-        contactReactionContainerMonitoredFields.flatMap( _.monitor(op) ).map( contact.backPropagate(_) ) ++
-        contactEffectContainerMonitoredFields.flatMap( _.monitor(op) )
+        reactionFields.flatMap( _.monitor(op) ).map( tie.backPropagate(_) ) ++
+        tieReactionContainerMonitoredFields.flatMap( _.monitor(op) ).map( tie.backPropagate(_) ) ++
+        tieEffectContainerMonitoredFields.flatMap( _.monitor(op) )
 
 }
 
@@ -159,7 +159,7 @@ case class BeforeAndAfterIdLocation(container:Container, selector:DBObject, fiel
 // CONTACTS
 
 @Salat
-abstract class Contact {
+abstract class Tie {
     def reactionContainer:Container
     def effectContainerMonitoredFields:Set[String]
     def reactionContainerMonitoredFields:Set[String]
@@ -170,7 +170,7 @@ abstract class Contact {
 //    def alterWrite(rule:Rule, change:Change):Change
 }
 
-case class SameDocumentContact(container:Container) extends Contact {
+case class SameDocumentTie(container:Container) extends Tie {
     def reactionContainer:Container = container
     def effectContainerMonitoredFields = Set()
     def reactionContainerMonitoredFields = Set()
@@ -193,7 +193,7 @@ case class SameDocumentContact(container:Container) extends Contact {
 */
 }
 
-case class FollowKeyContact(collectionName:String, localFieldName:String) extends Contact {
+case class FollowKeyTie(collectionName:String, localFieldName:String) extends Tie {
     def reactionContainer:Container = CollectionContainer(collectionName)
     val effectContainerMonitoredFields = Set(localFieldName)
     val reactionContainerMonitoredFields:Set[String] = Set()
@@ -219,7 +219,7 @@ case class FollowKeyContact(collectionName:String, localFieldName:String) extend
 */
 }
 
-case class ReverseKeyContact(container:Container, reactionFieldName:String) extends Contact {
+case class ReverseKeyTie(container:Container, reactionFieldName:String) extends Tie {
     def reactionContainer:Container = container
     val effectContainerMonitoredFields:Set[String] = Set("_id")
     val reactionContainerMonitoredFields = Set(reactionFieldName)
@@ -259,7 +259,7 @@ case class StringNormalizationReaction(from:String, to:String) extends Reaction 
 
 object StringNormalizationRule {
     def apply(collection:String, from:String, to:String) =
-        Rule(CollectionContainer(collection), SameDocumentContact(CollectionContainer(collection)),
+        Rule(CollectionContainer(collection), SameDocumentTie(CollectionContainer(collection)),
                 StringNormalizationReaction(from,to))
 }
 

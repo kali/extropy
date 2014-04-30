@@ -18,23 +18,23 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
 
     // some rules
     val searchableTitleRule = Rule(     CollectionContainer("blog.posts"),
-                                        SameDocumentContact(CollectionContainer("blog.posts")),
+                                        SameDocumentTie(CollectionContainer("blog.posts")),
                                         StringNormalizationReaction("title", "searchableTitle"))
 
     val authorNameInPostRule = Rule(    CollectionContainer("blog.posts"),
-                                        FollowKeyContact("blog.users", "authorId"),
+                                        FollowKeyTie("blog.users", "authorId"),
                                         CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
     val postCountInUserRule = Rule(     CollectionContainer("blog.users"),
-                                        ReverseKeyContact(CollectionContainer("blog.posts"), "authorId"),
+                                        ReverseKeyTie(CollectionContainer("blog.posts"), "authorId"),
                                         CountReaction("postCount"))
 
     val commentCountInUserRule = Rule(  CollectionContainer("blog.users"),
-                                        ReverseKeyContact(SubCollectionContainer("blog.posts","comments"), "authorId"),
+                                        ReverseKeyTie(SubCollectionContainer("blog.posts","comments"), "authorId"),
                                         CountReaction("commentCount"))
 
     val authorNameInComment = Rule(     SubCollectionContainer("blog.posts","comments"),
-                                        FollowKeyContact("blog.users", "authorId"),
+                                        FollowKeyTie("blog.users", "authorId"),
                                         CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
     // some monitored fields
@@ -47,9 +47,9 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
     behavior of "Value computation"
 
     it should "follow ties for document locations" in {
-        searchableTitleRule.contact.resolve(DocumentLocation(post1)) should be(DocumentLocation(post1))
-        authorNameInPostRule.contact.resolve(DocumentLocation(post1)) should be( SelectorLocation(MongoDBObject("_id" -> "liz")) )
-        postCountInUserRule.contact.resolve(DocumentLocation(userLiz)) should be( SelectorLocation(MongoDBObject("authorId" -> "liz")) )
+        searchableTitleRule.tie.resolve(DocumentLocation(post1)) should be(DocumentLocation(post1))
+        authorNameInPostRule.tie.resolve(DocumentLocation(post1)) should be( SelectorLocation(MongoDBObject("_id" -> "liz")) )
+        postCountInUserRule.tie.resolve(DocumentLocation(userLiz)) should be( SelectorLocation(MongoDBObject("authorId" -> "liz")) )
 /*
         commentCountInUserRule.monitoredFields should be( Set( monitorPostsCommentsAuthorId, monitorUsersId ) )
         authorNameInComment.monitoredFields should be(Set( monitorPostsCommentsAuthorId, monitorUsersName ))
@@ -57,7 +57,7 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
     }
 
     it should "follow ties for selector locations" in {
-//        searchableTitleRule.contact.resolve(DocumentLocation(post1)) should be(DocumentLocation(post1))
+//        searchableTitleRule.tie.resolve(DocumentLocation(post1)) should be(DocumentLocation(post1))
     }
 
     behavior of "Impact detection"
@@ -248,24 +248,24 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
 
     /*
     it should "back propagate locations detected by processor" in {
-        val same = SameDocumentContact(CollectionContainer("blog.posts"))
+        val same = SameDocumentTie(CollectionContainer("blog.posts"))
         same.backPropagate(SelectorLocation(MongoDBObject("_id" -> "post1"))) should be (SelectorLocation(MongoDBObject("_id" -> "post1")))
 
         // when user information change, I need to flag dirty all posts with matching authorId
-        val follow = FollowKeyContact("blog.users", "authorId")
+        val follow = FollowKeyTie("blog.users", "authorId")
         follow.backPropagate(SelectorLocation(MongoDBObject("_id" -> "liz"))) should be (SelectorLocation(MongoDBObject("authorId" -> "liz")))
 
         // when authorId in a post change, I need to flag dirty users which id was the previous value, and the one with new value (post count)
-        val reverseTop = ReverseKeyContact(CollectionContainer("blog.posts"), "authorId")
+        val reverseTop = ReverseKeyTie(CollectionContainer("blog.posts"), "authorId")
         reverseTop.backPropagate(SelectorLocation(MongoDBObject("_id" -> "post1"))) should be (BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), MongoDBObject("_id" -> "post1"), "authorId"))
 
         // when authorId in a comment change, I need to flag dirty users which id was the previous value, and the one with new value (comment count)
-        val reverseSub = ReverseKeyContact(SubCollectionContainer("blog.posts","comments"), "authorId")
+        val reverseSub = ReverseKeyTie(SubCollectionContainer("blog.posts","comments"), "authorId")
         reverseSub.backPropagate(SelectorLocation(MongoDBObject("comments._id" -> "comment1"))) should be (BeforeAndAfterIdLocation(SubCollectionContainer("blog.posts", "comments"), MongoDBObject("comments._id" -> "comment1"), "authorId"))
 
         // when user information change, I need to flag dirty all posts with matching authorId
 /*
-        FollowKeyContact("blog.users", "authorId"),
+        FollowKeyTie("blog.users", "authorId"),
 */
     }
 */
