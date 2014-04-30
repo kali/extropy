@@ -156,7 +156,7 @@ case class BeforeAndAfterIdLocation(container:Container, selector:DBObject, fiel
         SelectorLocation(MongoDBObject("_id" -> MongoDBObject("$in" -> extropy.payloadMongo(container.dbName)(container.collectionName).find(selector,MongoDBObject(field -> 1)).toSeq)))
 }
 
-// CONTACTS
+// TIE
 
 @Salat
 abstract class Tie {
