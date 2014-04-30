@@ -109,8 +109,9 @@ case class CollectionContainer(collectionFullName:String) extends Container {
         cursor.option |= com.mongodb.Bytes.QUERYOPTION_NOTIMEOUT
         cursor.toTraversable.map( DocumentLocation(_) )
     }
-    def pull(payloadMongo:MongoClient, loc:Location):Iterable[DBObject] =
-        payloadMongo(dbName)(collectionName).find(new MongoDBObject(loc.asSelectorLocation.selector)).toIterable
+    def pull(payloadMongo:MongoClient, loc:Location):Iterable[DBObject] = loc.expand(payloadMongo).flatMap { expanded =>
+        payloadMongo(dbName)(collectionName).find(expanded.asSelectorLocation.selector)
+    }
 
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {
         payloadMongo(dbName)(collectionName).update(
@@ -135,13 +136,13 @@ case class SubCollectionContainer(collectionFullName:String, arrayField:String) 
 abstract class Location {
     def asIdLocation:IdLocation
     def asSelectorLocation:SelectorLocation
-    def save(extropy:BaseExtropyContext):Location
+    def expand(extropy:MongoClient):Iterable[Location]
     def optimize:Location = this
 }
 case class DocumentLocation(dbo:DBObject) extends Location {
     override def asIdLocation:IdLocation = IdLocation(dbo.getAs[AnyRef]("_id").get)
     override def asSelectorLocation:SelectorLocation = asIdLocation.asSelectorLocation
-    def save(extropy:BaseExtropyContext):Location = this
+    def expand(extropy:MongoClient):Iterable[Location] = Some(this)
 }
 case class SelectorLocation(selector:DBObject) extends Location {
     def asIdLocationOption = if(selector.size == 1 && selector.keys.head == "_id" &&
@@ -153,23 +154,23 @@ case class SelectorLocation(selector:DBObject) extends Location {
     override def asIdLocation:IdLocation = asIdLocationOption.get
     override def asSelectorLocation = this
     override def optimize = asIdLocationOption.getOrElse(this)
-    def save(extropy:BaseExtropyContext):Location = this
+    def expand(extropy:MongoClient):Iterable[Location] = Some(this)
 }
 case class IdLocation(id:AnyRef) extends Location {
     def asSelectorLocation = SelectorLocation(MongoDBObject("_id" -> id))
     def asIdLocation = this
-    def save(extropy:BaseExtropyContext):Location = this
+    def expand(mongo:MongoClient):Iterable[Location] = Some(this)
 }
 case class QueryLocation(container:Container, location:Location, field:String) extends Location {
-    def asIdLocation = throw new IllegalStateException
-    def asSelectorLocation = throw new IllegalStateException
-    def save(extropy:BaseExtropyContext):Location = this
+    def asIdLocation = throw new IllegalStateException("can't make IdLocation from: " + this.toString)
+    def asSelectorLocation = throw new IllegalStateException("can't make SelectorLocation from: " + this.toString)
+    def expand(mongo:MongoClient):Iterable[Location] = container.pull(mongo, location).headOption.map( doc => IdLocation(doc.getAs[AnyRef](field)) )
 }
 case class BeforeAndAfterIdLocation(container:Container, location:Location, field:String) extends Location {
     def asIdLocation = throw new IllegalStateException
     def asSelectorLocation = throw new IllegalStateException
-    def save(extropy:BaseExtropyContext):Location =
-        SelectorLocation(MongoDBObject("_id" -> MongoDBObject("$in" -> extropy.payloadMongo(container.dbName)(container.collectionName).find(location.asSelectorLocation.selector,MongoDBObject(field -> 1)).toSeq))).optimize
+    def expand(mongo:MongoClient):Iterable[Location] =
+        Some(SelectorLocation(MongoDBObject("_id" -> MongoDBObject("$in" -> mongo(container.dbName)(container.collectionName).find(location.asSelectorLocation.selector,MongoDBObject(field -> 1)).toSeq))).optimize)
 }
 
 // TIE
@@ -218,7 +219,9 @@ case class ReverseKeyTie(reactionFieldName:String) extends Tie {
 case class CopyField(from:String, to:String)
 case class CopyFieldsReaction(fields:List[CopyField]) extends Reaction {
     val reactionFields:Set[String] = fields.map( _.from ).toSet
-    def process(data:Traversable[DBObject]) = MongoDBObject.empty
+    def process(data:Traversable[DBObject]) = data.headOption.map { doc =>
+        MongoDBObject(fields.map { pair => (pair.to, doc.getAs[AnyRef](pair.from)) })
+    }.getOrElse(MongoDBObject.empty)
 }
 
 case class CountReaction(field:String) extends Reaction {
