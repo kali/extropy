@@ -83,6 +83,7 @@ case class Rule(effectContainer:Container, contact:Contact, reaction:Reaction) {
         reactionFields.flatMap( _.monitor(op) ).map( contact.backPropagate(_) ) ++
         contactReactionContainerMonitoredFields.flatMap( _.monitor(op) ).map( contact.backPropagate(_) ) ++
         contactEffectContainerMonitoredFields.flatMap( _.monitor(op) )
+
 }
 
 // CONTAINERS
@@ -159,20 +160,22 @@ case class BeforeAndAfterIdLocation(container:Container, selector:DBObject, fiel
 
 @Salat
 abstract class Contact {
-    def resolve(from:DBObject):Traversable[DBObject]
     def reactionContainer:Container
     def effectContainerMonitoredFields:Set[String]
     def reactionContainerMonitoredFields:Set[String]
+
+    def resolve(from:Location):Location
     def backPropagate(location:Location):Location
 
 //    def alterWrite(rule:Rule, change:Change):Change
 }
 
 case class SameDocumentContact(container:Container) extends Contact {
-    def resolve(from:DBObject) = List(from)
     def reactionContainer:Container = container
     def effectContainerMonitoredFields = Set()
     def reactionContainerMonitoredFields = Set()
+
+    def resolve(from:Location) = from
     def backPropagate(location:Location):Location = location
 /*
     def alterWrite(rule:Rule, change:Change):Change = change match {
@@ -191,10 +194,12 @@ case class SameDocumentContact(container:Container) extends Contact {
 }
 
 case class FollowKeyContact(collectionName:String, localFieldName:String) extends Contact {
-    def resolve(from:DBObject) = null
     def reactionContainer:Container = CollectionContainer(collectionName)
     val effectContainerMonitoredFields = Set(localFieldName)
     val reactionContainerMonitoredFields:Set[String] = Set()
+    def resolve(from:Location) = from match {
+        case DocumentLocation(doc) => SelectorLocation(MongoDBObject("_id" -> doc.getAs[AnyRef](localFieldName)))
+    }
     def backPropagate(location:Location):Location = location.asById match {
         case Some(id) => SelectorLocation(MongoDBObject(localFieldName -> id))
     }
@@ -215,10 +220,12 @@ case class FollowKeyContact(collectionName:String, localFieldName:String) extend
 }
 
 case class ReverseKeyContact(container:Container, reactionFieldName:String) extends Contact {
-    def resolve(from:DBObject) = null
     def reactionContainer:Container = container
     val effectContainerMonitoredFields:Set[String] = Set("_id")
     val reactionContainerMonitoredFields = Set(reactionFieldName)
+    def resolve(from:Location) = from match {
+        case DocumentLocation(doc) => SelectorLocation(MongoDBObject(reactionFieldName -> doc.getAs[AnyRef]("_id")))
+    }
     def backPropagate(location:Location):Location = BeforeAndAfterIdLocation(container, location.asSelector.get, reactionFieldName)
 }
 

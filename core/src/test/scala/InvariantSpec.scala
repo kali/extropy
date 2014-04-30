@@ -44,7 +44,23 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
     val monitorPostsAuthorId = MonitoredField(CollectionContainer("blog.posts"), "authorId")
     val monitorPostsCommentsAuthorId = MonitoredField(SubCollectionContainer("blog.posts", "comments"), "authorId")
 
-    behavior of "Change detection"
+    behavior of "Value computation"
+
+    it should "follow ties for document locations" in {
+        searchableTitleRule.contact.resolve(DocumentLocation(post1)) should be(DocumentLocation(post1))
+        authorNameInPostRule.contact.resolve(DocumentLocation(post1)) should be( SelectorLocation(MongoDBObject("_id" -> "liz")) )
+        postCountInUserRule.contact.resolve(DocumentLocation(userLiz)) should be( SelectorLocation(MongoDBObject("authorId" -> "liz")) )
+/*
+        commentCountInUserRule.monitoredFields should be( Set( monitorPostsCommentsAuthorId, monitorUsersId ) )
+        authorNameInComment.monitoredFields should be(Set( monitorPostsCommentsAuthorId, monitorUsersName ))
+*/
+    }
+
+    it should "follow ties for selector locations" in {
+//        searchableTitleRule.contact.resolve(DocumentLocation(post1)) should be(DocumentLocation(post1))
+    }
+
+    behavior of "Impact detection"
 
     it should "identify fields to monitor" in {
         searchableTitleRule.monitoredFields should be( Set( monitorPostsTitle ) )
@@ -258,4 +274,5 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
     it should "detected monitored locations on insert" in {
     }
 */
+
 }
