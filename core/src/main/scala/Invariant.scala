@@ -61,10 +61,10 @@ case class MonitoredField(container:Container, field:String) {
 
 }
 
-case class Rule(effectContainer:Container, tie:Tie, reaction:Reaction) {
-    val reactionFields:Set[MonitoredField] = reaction.reactionFields.map( MonitoredField(tie.reactionContainer, _) )
+case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie, reaction:Reaction) {
+    val reactionFields:Set[MonitoredField] = reaction.reactionFields.map( MonitoredField(reactionContainer, _) )
     val tieEffectContainerMonitoredFields:Set[MonitoredField] = tie.effectContainerMonitoredFields.map( MonitoredField(effectContainer, _) )
-    val tieReactionContainerMonitoredFields:Set[MonitoredField] = tie.reactionContainerMonitoredFields.map( MonitoredField(tie.reactionContainer, _) )
+    val tieReactionContainerMonitoredFields:Set[MonitoredField] = tie.reactionContainerMonitoredFields.map( MonitoredField(reactionContainer, _) )
 
     val monitoredFields:Set[MonitoredField] = reactionFields ++ tieEffectContainerMonitoredFields ++ tieReactionContainerMonitoredFields
 
@@ -73,8 +73,8 @@ case class Rule(effectContainer:Container, tie:Tie, reaction:Reaction) {
     }
 
     def dirtiedSet(op:Change):Set[Location] =
-        reactionFields.flatMap( _.monitor(op) ).map( tie.backPropagate(_) ) ++
-        tieReactionContainerMonitoredFields.flatMap( _.monitor(op) ).map( tie.backPropagate(_) ) ++
+        reactionFields.flatMap( _.monitor(op) ).map( tie.backPropagate(this, _) ) ++
+        tieReactionContainerMonitoredFields.flatMap( _.monitor(op) ).map( tie.backPropagate(this, _) ) ++
         tieEffectContainerMonitoredFields.flatMap( _.monitor(op) )
 
 }
@@ -149,6 +149,11 @@ case class IdLocation(id:AnyRef) extends Location {
     def asIdLocation = this
     def save(extropy:BaseExtropyContext):Location = this
 }
+case class QueryLocation(container:Container, location:Location, field:String) extends Location {
+    def asIdLocation = throw new IllegalStateException
+    def asSelectorLocation = throw new IllegalStateException
+    def save(extropy:BaseExtropyContext):Location = this
+}
 case class BeforeAndAfterIdLocation(container:Container, location:Location, field:String) extends Location {
     def asIdLocation = throw new IllegalStateException
     def asSelectorLocation = throw new IllegalStateException
@@ -160,42 +165,37 @@ case class BeforeAndAfterIdLocation(container:Container, location:Location, fiel
 
 @Salat
 abstract class Tie {
-    def reactionContainer:Container
-    def effectContainerMonitoredFields:Set[String]
     def reactionContainerMonitoredFields:Set[String]
+    def effectContainerMonitoredFields:Set[String]
 
-    def resolve(from:Location):Location
-    def backPropagate(location:Location):Location
+    def resolve(rule:Rule, from:Location):Location
+    def backPropagate(rule:Rule, location:Location):Location
 }
 
-case class SameDocumentTie(container:Container) extends Tie {
-    def reactionContainer:Container = container
-    def effectContainerMonitoredFields = Set()
+case class SameDocumentTie extends Tie {
     def reactionContainerMonitoredFields = Set()
+    def effectContainerMonitoredFields = Set()
 
-    def resolve(from:Location) = from
-    def backPropagate(location:Location):Location = location.optimize
+    def resolve(rule:Rule, from:Location) = from
+    def backPropagate(rule:Rule, location:Location):Location = location.optimize
 }
 
-case class FollowKeyTie(collectionName:String, localFieldName:String) extends Tie {
-    def reactionContainer:Container = CollectionContainer(collectionName)
+case class FollowKeyTie(localFieldName:String) extends Tie {
     val effectContainerMonitoredFields = Set(localFieldName)
     val reactionContainerMonitoredFields:Set[String] = Set()
 
-    def resolve(from:Location) = from match {
+    def resolve(rule:Rule, from:Location) = from match {
         case DocumentLocation(doc) => IdLocation(doc.getAs[AnyRef](localFieldName).get)
+        case idl:IdLocation => QueryLocation(rule.effectContainer, idl, localFieldName)
     }
-    def backPropagate(location:Location):Location = SelectorLocation(MongoDBObject(localFieldName -> location.asIdLocation.id)).optimize
+    def backPropagate(rule:Rule, location:Location):Location = SelectorLocation(MongoDBObject(localFieldName -> location.asIdLocation.id)).optimize
 }
 
-case class ReverseKeyTie(container:Container, reactionFieldName:String) extends Tie {
-    def reactionContainer:Container = container
+case class ReverseKeyTie(reactionFieldName:String) extends Tie {
     val effectContainerMonitoredFields:Set[String] = Set("_id")
     val reactionContainerMonitoredFields = Set(reactionFieldName)
-    def resolve(from:Location) = from match {
-        case DocumentLocation(doc) => SelectorLocation(MongoDBObject(reactionFieldName -> doc.getAs[AnyRef]("_id"))).optimize
-    }
-    def backPropagate(location:Location):Location = BeforeAndAfterIdLocation(container, location.asSelectorLocation.optimize, reactionFieldName)
+    def resolve(rule:Rule, from:Location) = SelectorLocation(MongoDBObject(reactionFieldName -> from.asIdLocation.id)).optimize
+    def backPropagate(rule:Rule, location:Location):Location = BeforeAndAfterIdLocation(rule.reactionContainer, location.asSelectorLocation.optimize, reactionFieldName)
 }
 
 // PROCESSORS
@@ -228,7 +228,7 @@ case class StringNormalizationReaction(from:String, to:String) extends Reaction 
 
 object StringNormalizationRule {
     def apply(collection:String, from:String, to:String) =
-        Rule(CollectionContainer(collection), SameDocumentTie(CollectionContainer(collection)),
+        Rule(CollectionContainer(collection), CollectionContainer(collection), SameDocumentTie(),
                 StringNormalizationReaction(from,to))
 }
 

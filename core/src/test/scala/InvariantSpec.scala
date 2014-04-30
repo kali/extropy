@@ -17,25 +17,20 @@ posts: ( _id, authorId, authorName*, title, searchableTitle*, comments[ { author
 class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll {
 
     // some rules
-    val searchableTitleRule = Rule(     CollectionContainer("blog.posts"),
-                                        SameDocumentTie(CollectionContainer("blog.posts")),
-                                        StringNormalizationReaction("title", "searchableTitle"))
+    val searchableTitleRule = Rule(     CollectionContainer("blog.posts"), CollectionContainer("blog.posts"),
+                                        SameDocumentTie(), StringNormalizationReaction("title", "searchableTitle"))
 
-    val authorNameInPostRule = Rule(    CollectionContainer("blog.posts"),
-                                        FollowKeyTie("blog.users", "authorId"),
-                                        CopyFieldsReaction(List(CopyField("name", "authorName"))))
+    val authorNameInPostRule = Rule(    CollectionContainer("blog.posts"), CollectionContainer("blog.users"),
+                                        FollowKeyTie("authorId"), CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
-    val postCountInUserRule = Rule(     CollectionContainer("blog.users"),
-                                        ReverseKeyTie(CollectionContainer("blog.posts"), "authorId"),
-                                        CountReaction("postCount"))
+    val postCountInUserRule = Rule(     CollectionContainer("blog.users"), CollectionContainer("blog.posts"),
+                                        ReverseKeyTie("authorId"), CountReaction("postCount"))
 
-    val commentCountInUserRule = Rule(  CollectionContainer("blog.users"),
-                                        ReverseKeyTie(SubCollectionContainer("blog.posts","comments"), "authorId"),
-                                        CountReaction("commentCount"))
+    val commentCountInUserRule = Rule(  CollectionContainer("blog.users"), SubCollectionContainer("blog.posts", "comments"),
+                                        ReverseKeyTie("authorId"), CountReaction("commentCount"))
 
-    val authorNameInComment = Rule(     SubCollectionContainer("blog.posts","comments"),
-                                        FollowKeyTie("blog.users", "authorId"),
-                                        CopyFieldsReaction(List(CopyField("name", "authorName"))))
+    val authorNameInComment = Rule(     SubCollectionContainer("blog.posts","comments"), CollectionContainer("blog.users"),
+                                        FollowKeyTie("authorId"), CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
     // some monitored fields
     val monitorUsersId = MonitoredField(CollectionContainer("blog.users"), "_id") // id can not change, but this allow to detect insertion of users
@@ -47,17 +42,15 @@ class InvariantSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll 
     behavior of "Value computation"
 
     it should "follow ties for document locations" in {
-        searchableTitleRule.tie.resolve(DocumentLocation(post1)) should be(DocumentLocation(post1))
-        authorNameInPostRule.tie.resolve(DocumentLocation(post1)) should be( IdLocation("liz") )
-        postCountInUserRule.tie.resolve(DocumentLocation(userLiz)) should be( SelectorLocation(MongoDBObject("authorId" -> "liz")) )
-/*
-        commentCountInUserRule.monitoredFields should be( Set( monitorPostsCommentsAuthorId, monitorUsersId ) )
-        authorNameInComment.monitoredFields should be(Set( monitorPostsCommentsAuthorId, monitorUsersName ))
-*/
+        searchableTitleRule.tie.resolve(searchableTitleRule, DocumentLocation(post1)) should be( DocumentLocation(post1) )
+        authorNameInPostRule.tie.resolve(authorNameInPostRule, DocumentLocation(post1)) should be( IdLocation("liz") )
+        postCountInUserRule.tie.resolve(postCountInUserRule, DocumentLocation(userLiz)) should be( SelectorLocation(MongoDBObject("authorId" -> "liz")) )
     }
 
-    it should "follow ties for selector locations" in {
-//        searchableTitleRule.tie.resolve(DocumentLocation(post1)) should be(DocumentLocation(post1))
+    it should "follow ties for id locations" in {
+        searchableTitleRule.tie.resolve(searchableTitleRule, IdLocation("post1")) should be( IdLocation("post1") )
+        authorNameInPostRule.tie.resolve(authorNameInPostRule, IdLocation("post1")) should be( QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") )
+        postCountInUserRule.tie.resolve(postCountInUserRule, IdLocation("liz")) should be( SelectorLocation(MongoDBObject("authorId" -> "liz")) )
     }
 
     behavior of "Impact detection"
