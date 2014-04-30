@@ -68,15 +68,8 @@ case class Rule(effectContainer:Container, tie:Tie, reaction:Reaction) {
 
     val monitoredFields:Set[MonitoredField] = reactionFields ++ tieEffectContainerMonitoredFields ++ tieReactionContainerMonitoredFields
 
-//    def monitoredCollections:List[String] = tie.monitoredCollections(container)
     def alterWrite(op:Change):Change = op // tie.alterWrite(this, op)
     def activeSync(extropy:BaseExtropyContext) {
-/*
-        container.iterator(extropy.payloadMongo).foreach { location =>
-            val values = processor.process(tie.resolve(location.dbo))
-            container.setValues(extropy.payloadMongo, location, values)
-        }
-*/
     }
 
     def dirtiedSet(op:Change):Set[Location] =
@@ -166,8 +159,6 @@ abstract class Tie {
 
     def resolve(from:Location):Location
     def backPropagate(location:Location):Location
-
-//    def alterWrite(rule:Rule, change:Change):Change
 }
 
 case class SameDocumentTie(container:Container) extends Tie {
@@ -177,20 +168,6 @@ case class SameDocumentTie(container:Container) extends Tie {
 
     def resolve(from:Location) = from
     def backPropagate(location:Location):Location = location
-/*
-    def alterWrite(rule:Rule, change:Change):Change = change match {
-        case insert:InsertChange => insert.copy(
-            documents=insert.documents.map { d => MongoDBObject(d.asInstanceOf[DBObject].toList ++
-                rule.processor.process(List(d.asInstanceOf[DBObject])).toList) }
-        )
-        case fbu:FullBodyUpdateChange => fbu.copy(
-            update=MongoDBObject(fbu.update.asInstanceOf[DBObject].toList ++
-                rule.processor.process(List(fbu.update.asInstanceOf[DBObject])).toList)
-        )
-        case delete:DeleteChange => delete
-        case _ => throw new NotImplementedError
-    }
-*/
 }
 
 case class FollowKeyTie(collectionName:String, localFieldName:String) extends Tie {
@@ -203,20 +180,6 @@ case class FollowKeyTie(collectionName:String, localFieldName:String) extends Ti
     def backPropagate(location:Location):Location = location.asById match {
         case Some(id) => SelectorLocation(MongoDBObject(localFieldName -> id))
     }
-/*
-    def alterWrite(rule:Rule, change:Change):Change = change match {
-        case insert:InsertChange => insert.copy(
-            documents=insert.documents.map { d => MongoDBObject(d.asInstanceOf[DBObject].toList ++
-                rule.processor.process(List(d.asInstanceOf[DBObject])).toList) }
-        )
-        case fbu:FullBodyUpdateChange => fbu.copy(
-            update=MongoDBObject(fbu.update.asInstanceOf[DBObject].toList ++
-                rule.processor.process(List(fbu.update.asInstanceOf[DBObject])).toList)
-        )
-        case delete:DeleteChange => delete
-        case _ => throw new NotImplementedError
-    }
-*/
 }
 
 case class ReverseKeyTie(container:Container, reactionFieldName:String) extends Tie {
@@ -262,76 +225,6 @@ object StringNormalizationRule {
         Rule(CollectionContainer(collection), SameDocumentTie(CollectionContainer(collection)),
                 StringNormalizationReaction(from,to))
 }
-
-/*
-@Salat
-abstract class SameDocumentRule(collection:String) extends Rule {
-    val computeOneLocally:(BSONObject=>AnyRef) = null
-    val monitoredCollections = List(collection)
-
-    def sourceFields:Seq[String]
-    def targetField:String
-
-    def alterWrite(op:Change):Change = op match {
-        case insert:InsertChange => insert.copy(
-            documents=insert.documents.map { d => d.asInstanceOf[DBObject] ++ ( targetField -> computeOneLocally(d) ) }
-        )
-        case fbu:FullBodyUpdateChange => fbu.copy(
-            update=fbu.update.asInstanceOf[DBObject] ++ (targetField -> computeOneLocally(fbu.update))
-        )
-        case delete:DeleteChange => delete
-        case _ => throw new NotImplementedError
-    }
-
-    def activeSync(extropy:BaseExtropyContext) {
-        val actualCollection = extropy.payloadMongo(collection.split('.').head)(collection.split('.').drop(1).mkString("."))
-        val cursor = actualCollection.find().$orderby( MongoDBObject( "_id" -> 1 ) )
-        cursor.option |= com.mongodb.Bytes.QUERYOPTION_NOTIMEOUT
-        cursor.foreach { dbo => fixOne(actualCollection, dbo) }
-    }
-
-    def fixOne(col:MongoCollection, dbo:BSONObject)
-}
-
-@Salat
-abstract class ScalarFieldToScalarFieldRule(collection:String, from:String, to:String)
-            extends SameDocumentRule(collection) {
-    def sourceFields = Seq(from)
-    def targetField = to
-    override def alterWrite(op:Change):Change = op match {
-        case mod:ModifiersUpdateChange =>
-            val modifiers = mod.update.asInstanceOf[DBObject]
-            val setter = Option(mod.update.asInstanceOf[DBObject].get("$set"))
-                .filter( _.isInstanceOf[DBObject] )
-                .map( dbo => computeOneLocally(dbo.asInstanceOf[DBObject]) )
-            setter match {
-                case Some(value) => {
-                    val m = mod.copy( update=new MongoDBObject(mod.update.asInstanceOf[DBObject]).clone )
-                    m.update.get("$set").asInstanceOf[DBObject].put(to, compute(value))
-                    m
-                }
-                case None => mod
-            }
-        case op => super.alterWrite(op)
-    }
-    override val computeOneLocally:(BSONObject=>AnyRef) = { d:BSONObject =>
-        Option(d.asInstanceOf[DBObject].get(from)).map( compute(_) ).getOrElse(null)
-    }
-
-    def fixOne(col:MongoCollection, dbo:BSONObject) {
-        val wanted = computeOneLocally(dbo)
-        if(wanted != dbo.get(targetField))
-            col.update(MongoDBObject("_id" -> dbo.get("_id")), MongoDBObject("$set" -> MongoDBObject(targetField -> wanted)))
-    }
-
-    def compute(src:AnyRef):AnyRef
-}
-
-case class StringNormalizationRule(collection:String, from:String, to:String)
-        extends ScalarFieldToScalarFieldRule(collection, from, to) {
-    override def compute(src:AnyRef):AnyRef = src.toString.toLowerCase
-}
-*/
 
 class InvariantDAO(val db:MongoDB, val lockDuration:FiniteDuration)(implicit ctx: com.novus.salat.Context) {
     val collection = db("invariants")
