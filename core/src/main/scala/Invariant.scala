@@ -69,7 +69,8 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
     val monitoredFields:Set[MonitoredField] = reactionFields ++ tieEffectContainerMonitoredFields ++ tieReactionContainerMonitoredFields
 
     def alterWrite(op:Change):Change = op // tie.alterWrite(this, op)
-    def activeSync(extropy:BaseExtropyContext) {
+    def activeSync(payloadMongo:MongoClient) {
+        effectContainer.iterator(payloadMongo).foreach( fixOne(payloadMongo, _) )
     }
 
     def fixOne(payloadMongo:MongoClient, location:Location) {

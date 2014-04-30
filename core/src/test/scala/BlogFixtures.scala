@@ -39,7 +39,7 @@ object BlogFixtures {
 
     val post1 = MongoDBObject("_id" -> "post1", "title" -> "Title for Post 1", "authorId" -> "liz")
     val post2 = MongoDBObject("_id" -> "post2", "title" -> "Title for Post 2", "authorId" -> "liz",
-                    "comments" -> List(MongoDBObject("authorId" -> "jack")))
+                    "comments" -> MongoDBList(MongoDBObject("authorId" -> "jack")))
 
     // some inserts
     val insertUserLiz = InsertChange("blog.users", Stream( userLiz ))
