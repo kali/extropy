@@ -72,6 +72,12 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
     def activeSync(extropy:BaseExtropyContext) {
     }
 
+    def fixOne(payloadMongo:MongoClient, location:Location) {
+        val reactant = reactionContainer.pull(payloadMongo, tie.resolve(this, location))
+        val effects = reaction.process(reactant)
+        effectContainer.setValues(payloadMongo, location, effects)
+    }
+
     def dirtiedSet(op:Change):Set[Location] =
         reactionFields.flatMap( _.monitor(op) ).map( tie.backPropagate(this, _) ) ++
         tieReactionContainerMonitoredFields.flatMap( _.monitor(op) ).map( tie.backPropagate(this, _) ) ++
@@ -83,11 +89,14 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
 
 @Salat
 abstract class Container {
-    def iterator(payloadMongo:MongoClient):Traversable[Location]
     def collection:String
-    def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject)
     def dbName:String
     def collectionName:String
+
+    def iterator(payloadMongo:MongoClient):Traversable[Location]
+    def pull(payloadMongo:MongoClient, loc:Location):Iterable[DBObject]
+
+    def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject)
 }
 
 case class CollectionContainer(collectionFullName:String) extends Container {
@@ -100,13 +109,14 @@ case class CollectionContainer(collectionFullName:String) extends Container {
         cursor.option |= com.mongodb.Bytes.QUERYOPTION_NOTIMEOUT
         cursor.toTraversable.map( DocumentLocation(_) )
     }
+    def pull(payloadMongo:MongoClient, loc:Location):Iterable[DBObject] =
+        payloadMongo(dbName)(collectionName).find(new MongoDBObject(loc.asSelectorLocation.selector)).toIterable
+
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {
-/*
         payloadMongo(dbName)(collectionName).update(
-            MongoDBObject("_id" -> location.dbo.get("_id")),
+            MongoDBObject("_id" -> location.asIdLocation.id),
             MongoDBObject("$set" -> values)
         )
-*/
     }
 }
 
@@ -115,6 +125,7 @@ case class SubCollectionContainer(collectionFullName:String, arrayField:String) 
     val collectionName = collectionFullName.split('.').drop(1).mkString(".")
 
     def iterator(payloadMongo:MongoClient):Traversable[Location] = null
+    def pull(payloadMongo:MongoClient, loc:Location):Iterable[DBObject] = null
     def collection:String = collectionFullName
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {}
 }
@@ -198,7 +209,7 @@ case class ReverseKeyTie(reactionFieldName:String) extends Tie {
     def backPropagate(rule:Rule, location:Location):Location = BeforeAndAfterIdLocation(rule.reactionContainer, location.asSelectorLocation.optimize, reactionFieldName)
 }
 
-// PROCESSORS
+// REACTION
 @Salat abstract class Reaction {
     def reactionFields:Set[String]
     def process(data:Traversable[DBObject]):DBObject
