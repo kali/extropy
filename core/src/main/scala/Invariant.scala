@@ -80,8 +80,8 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
     }
 
     def dirtiedSet(op:Change):Set[Location] =
-        reactionFields.flatMap( _.monitor(op) ).map( tie.backPropagate(this, _) ) ++
-        tieReactionContainerMonitoredFields.flatMap( _.monitor(op) ).map( tie.backPropagate(this, _) ) ++
+        reactionFields.flatMap( _.monitor(op) ).flatMap( tie.backPropagate(this, _) ) ++
+        tieReactionContainerMonitoredFields.flatMap( _.monitor(op) ).flatMap( tie.backPropagate(this, _) ) ++
         tieEffectContainerMonitoredFields.flatMap( _.monitor(op) )
 
 }
@@ -139,6 +139,7 @@ abstract class Location {
     def asSelectorLocation:SelectorLocation
     def expand(extropy:MongoClient):Iterable[Location]
     def optimize:Location = this
+    def snapshot(mongo:MongoClient):Iterable[Location] = Some(this)
 }
 case class DocumentLocation(dbo:DBObject) extends Location {
     override def asIdLocation:IdLocation = IdLocation(dbo.getAs[AnyRef]("_id").get)
@@ -167,11 +168,11 @@ case class QueryLocation(container:Container, location:Location, field:String) e
     def asSelectorLocation = throw new IllegalStateException("can't make SelectorLocation from: " + this.toString)
     def expand(mongo:MongoClient):Iterable[Location] = container.pull(mongo, location).headOption.map( doc => IdLocation(doc.getAs[AnyRef](field)) )
 }
-case class BeforeAndAfterIdLocation(container:Container, location:Location, field:String) extends Location {
+case class SnapshotLocation(query:QueryLocation) extends Location {
     def asIdLocation = throw new IllegalStateException
     def asSelectorLocation = throw new IllegalStateException
-    def expand(mongo:MongoClient):Iterable[Location] =
-        Some(SelectorLocation(MongoDBObject("_id" -> MongoDBObject("$in" -> mongo(container.dbName)(container.collectionName).find(location.asSelectorLocation.selector,MongoDBObject(field -> 1)).toSeq))).optimize)
+    override def snapshot(mongo:MongoClient) = query.expand(mongo)
+    def expand(mongo:MongoClient):Iterable[Location] = throw new IllegalStateException
 }
 
 // TIE
@@ -182,7 +183,7 @@ abstract class Tie {
     def effectContainerMonitoredFields:Set[String]
 
     def resolve(rule:Rule, from:Location):Location
-    def backPropagate(rule:Rule, location:Location):Location
+    def backPropagate(rule:Rule, location:Location):Iterable[Location]
 }
 
 case class SameDocumentTie extends Tie {
@@ -190,7 +191,7 @@ case class SameDocumentTie extends Tie {
     def effectContainerMonitoredFields = Set()
 
     def resolve(rule:Rule, from:Location) = from
-    def backPropagate(rule:Rule, location:Location):Location = location.optimize
+    def backPropagate(rule:Rule, location:Location):Iterable[Location] = Some(location.optimize)
 }
 
 case class FollowKeyTie(localFieldName:String) extends Tie {
@@ -201,14 +202,17 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
         case DocumentLocation(doc) => IdLocation(doc.getAs[AnyRef](localFieldName).get)
         case idl:IdLocation => QueryLocation(rule.effectContainer, idl, localFieldName)
     }
-    def backPropagate(rule:Rule, location:Location):Location = SelectorLocation(MongoDBObject(localFieldName -> location.asIdLocation.id)).optimize
+    def backPropagate(rule:Rule, location:Location):Iterable[Location] = Some(SelectorLocation(MongoDBObject(localFieldName -> location.asIdLocation.id)).optimize)
 }
 
 case class ReverseKeyTie(reactionFieldName:String) extends Tie {
     val effectContainerMonitoredFields:Set[String] = Set("_id")
     val reactionContainerMonitoredFields = Set(reactionFieldName)
     def resolve(rule:Rule, from:Location) = SelectorLocation(MongoDBObject(reactionFieldName -> from.asIdLocation.id)).optimize
-    def backPropagate(rule:Rule, location:Location):Location = BeforeAndAfterIdLocation(rule.reactionContainer, location.asSelectorLocation.optimize, reactionFieldName)
+    def backPropagate(rule:Rule, location:Location):Iterable[Location] = {
+        val q = QueryLocation(rule.reactionContainer, location.asSelectorLocation.optimize, reactionFieldName)
+        Array(SnapshotLocation(q), q)
+    }
 }
 
 // REACTION

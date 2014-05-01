@@ -153,10 +153,14 @@ class InvariantSpec extends FlatSpec with ShouldMatchers {
         postCountInUserRule.dirtiedSet( insertUserLiz ) should be ( Set(DocumentLocation(userLiz)) )
         postCountInUserRule.dirtiedSet( insertUsers ) should be ( Set(DocumentLocation(userLiz), DocumentLocation(userJack), DocumentLocation(userCatLady)))
         postCountInUserRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
-        postCountInUserRule.dirtiedSet( insertPost1 ) should be ( Set( BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId")) )
+        postCountInUserRule.dirtiedSet( insertPost1 ) should be ( Set(
+            QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") ) ) )
         postCountInUserRule.dirtiedSet( insertPosts ) should be ( Set(
-                                                    BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId"),
-                                                    BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), IdLocation("post2"), "authorId") ) )
+            QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId")),
+            QueryLocation(CollectionContainer("blog.posts"), IdLocation("post2"), "authorId"),
+            SnapshotLocation(QueryLocation(CollectionContainer("blog.posts"), IdLocation("post2"), "authorId"))  ) )
     }
 
     it should "identify dirty set for modifiers updates" in {
@@ -164,19 +168,22 @@ class InvariantSpec extends FlatSpec with ShouldMatchers {
         postCountInUserRule.dirtiedSet( setNameOnUserLiz ) should be( 'empty )
         postCountInUserRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
         postCountInUserRule.dirtiedSet( setAuthorIdOnPost1 ) should be( Set(
-                                                    BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") ) )
+            QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") ) ) )
     }
 
     it should "identify dirty set for fbu updates" in {
         postCountInUserRule.dirtiedSet( fbuUserLiz ) should be ( Set(IdLocation("liz")) )
         postCountInUserRule.dirtiedSet( fbuPost1 ) should be ( Set(
-                                                    BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") ) )
+            QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") ) ) )
     }
 
     it should "identify dirty set for delete" in {
         postCountInUserRule.dirtiedSet( deleteUserLiz ) should be ( Set(IdLocation("liz")) ) // TODO: optimize me
         postCountInUserRule.dirtiedSet( deletePost1 ) should be ( Set(
-                                                    BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") ) ) // TODO: optimize me
+            QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") ) ) )
     }
 
     /*
