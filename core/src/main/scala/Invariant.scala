@@ -147,8 +147,9 @@ case class CollectionContainer(collectionFullName:String) extends Container {
 
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {
         payloadMongo(dbName)(collectionName).update(
-            MongoDBObject("_id" -> location.asIdLocation.id),
-            MongoDBObject("$set" -> values)
+            location.asSelectorLocation.selector,
+            MongoDBObject("$set" -> values),
+            multi=true
         )
     }
 }
@@ -198,7 +199,6 @@ case class QueryLocation(container:Container, location:Location, field:String) e
     def asIdLocation = throw new IllegalStateException("can't make IdLocation from: " + this.toString)
     def asSelectorLocation = throw new IllegalStateException("can't make SelectorLocation from: " + this.toString)
     def expand(mongo:MongoClient):Iterable[Location] = {
-        println(s"XXXX  $container mongo:$mongo")
         container.pull(mongo, location).map( doc => IdLocation(doc.getAs[AnyRef](field)) )
     }
 }
@@ -234,6 +234,7 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
 
     def resolve(rule:Rule, from:Location) = from match {
         case DocumentLocation(doc) => IdLocation(doc.getAs[AnyRef](localFieldName).get)
+        case SelectorLocation(sel) => SelectorLocation(MongoDBObject("_id" -> sel.getAs[AnyRef](localFieldName).get))
         case idl:IdLocation => QueryLocation(rule.effectContainer, idl, localFieldName)
     }
     def backPropagate(rule:Rule, location:Location):Iterable[Location] = Some(SelectorLocation(MongoDBObject(localFieldName -> location.asIdLocation.id)).optimize)

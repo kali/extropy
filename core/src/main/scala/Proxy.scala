@@ -15,20 +15,16 @@ abstract class ExtropyProxy(extropy:BaseExtropyContext, optionalConfiguration:Op
         AnalysedChange(change.originalChange, snapped, change.alteredChange)
     }
 
-    /*
-    def syncProcess(originalChange:Change) = {
-        val analysed = preChange(originalChange)
-    }
-    */
 }
 
 case class SyncProxy(extropy:BaseExtropyContext, optionalConfiguration:Option[DynamicConfiguration] = None)
     extends ExtropyProxy(extropy, optionalConfiguration) {
 
-    def doChange(change:Change) {
+    def doChange(change:Change) = {
         val analysed = preChange(change)
         val snapped = snapshot(analysed)
         val result = snapped.alteredChange.play(extropy.payloadMongo)
+        snapped.dirtiedSet.foreach { case(inv, locations) => locations.flatMap( _.expand(extropy.payloadMongo) ).foreach( inv.rule.fixOne(extropy.payloadMongo, _ ) ) }
         result
     }
 

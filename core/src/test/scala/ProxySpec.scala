@@ -29,10 +29,22 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
 
     behavior of "A synchronous proxy"
 
-    it should "deal with insert" in withExtropy { (extropy, fixture) =>
+    it should "deal with various inserts" in withExtropy { (extropy, fixture) =>
         val proxy = SyncProxy(extropy)
         import fixture._
-        proxy.doChange(InsertChange(s"$dbName.posts", Stream(post1)))
+        Seq(    Seq(insertPost1,insertPost2,insertUserLiz,insertUserJack),
+                Seq(insertPost1,insertPost2,insertUsers),
+                Seq(insertPosts,insertUsers)
+        ).foreach { ops =>
+            ops.permutations.foreach { perm =>
+                Seq("users", "posts").foreach( extropy.payloadMongo(dbName)(_).remove(MongoDBObject.empty) )
+                extropy.payloadMongo(dbName)("users").remove(MongoDBObject.empty)
+                perm.foreach { op =>
+                    proxy.doChange(op)
+                    allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+                }
+            }
+        }
     }
 
     it should "leave messages on an arbitrary collection alone" in withExtropy { (extropy,id) =>

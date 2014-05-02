@@ -25,7 +25,7 @@ case class BlogFixtures(dbName:String) {
     val authorNameInComment = Rule(     SubCollectionContainer(s"$dbName.posts","comments"), CollectionContainer(s"$dbName.users"),
                                         FollowKeyTie("authorId"), CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
-    val allRules = Array(searchableTitleRule, authorNameInPostRule, postCountInUserRule /*, commentCountInUserRule, authorNameInComment*/) // FIXME
+    val allRules = Array(searchableTitleRule, authorNameInPostRule, postCountInUserRule/*, commentCountInUserRule, authorNameInComment */) // FIXME
 
     // some monitored fields
     val monitorUsersId = MonitoredField(CollectionContainer(s"$dbName.users"), "_id") // id can not change, but this allow to detect insertion of users
@@ -45,9 +45,11 @@ case class BlogFixtures(dbName:String) {
 
     // some inserts
     val insertUserLiz = InsertChange(s"$dbName.users", Stream( userLiz ))
+    val insertUserJack = InsertChange(s"$dbName.users", Stream( userJack ))
     val insertUsers = InsertChange(s"$dbName.users", Stream( userLiz, userJack, userCatLady ))
     val insertNotUsers = InsertChange(s"$dbName.not-user", Stream( userLiz, userCatLady ))
     val insertPost1 = InsertChange(s"$dbName.posts", Stream( post1 ))
+    val insertPost2 = InsertChange(s"$dbName.posts", Stream( post2 ))
     val insertPosts = InsertChange(s"$dbName.posts", Stream( post1, post2 ))
 
     // some modifiers updates
