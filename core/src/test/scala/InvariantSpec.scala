@@ -11,7 +11,8 @@ import com.mongodb.casbah.Imports._
 
 class InvariantSpec extends FlatSpec with ShouldMatchers {
 
-    import BlogFixtures._
+    val fixture = BlogFixtures(s"extropy-spec-${System.currentTimeMillis}")
+    import fixture._
 
     behavior of "Value computation internals"
 
@@ -23,7 +24,7 @@ class InvariantSpec extends FlatSpec with ShouldMatchers {
 
     it should "follow ties for id locations" in {
         searchableTitleRule.tie.resolve(searchableTitleRule, IdLocation("post1")) should be( IdLocation("post1") )
-        authorNameInPostRule.tie.resolve(authorNameInPostRule, IdLocation("post1")) should be( QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") )
+        authorNameInPostRule.tie.resolve(authorNameInPostRule, IdLocation("post1")) should be( QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId") )
         postCountInUserRule.tie.resolve(postCountInUserRule, IdLocation("liz")) should be( SelectorLocation(MongoDBObject("authorId" -> "liz")) )
     }
 
@@ -154,13 +155,13 @@ class InvariantSpec extends FlatSpec with ShouldMatchers {
         postCountInUserRule.dirtiedSet( insertUsers ) should be ( Set(DocumentLocation(userLiz), DocumentLocation(userJack), DocumentLocation(userCatLady)))
         postCountInUserRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
         postCountInUserRule.dirtiedSet( insertPost1 ) should be ( Set(
-            QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId"),
-            SnapshotLocation(QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") ) ) )
+            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId") ) ) )
         postCountInUserRule.dirtiedSet( insertPosts ) should be ( Set(
-            QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId"),
-            SnapshotLocation(QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId")),
-            QueryLocation(CollectionContainer("blog.posts"), IdLocation("post2"), "authorId"),
-            SnapshotLocation(QueryLocation(CollectionContainer("blog.posts"), IdLocation("post2"), "authorId"))  ) )
+            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId")),
+            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post2"), "authorId"),
+            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post2"), "authorId"))  ) )
     }
 
     it should "identify dirty set for modifiers updates" in {
@@ -168,44 +169,44 @@ class InvariantSpec extends FlatSpec with ShouldMatchers {
         postCountInUserRule.dirtiedSet( setNameOnUserLiz ) should be( 'empty )
         postCountInUserRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
         postCountInUserRule.dirtiedSet( setAuthorIdOnPost1 ) should be( Set(
-            QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId"),
-            SnapshotLocation(QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") ) ) )
+            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId") ) ) )
     }
 
     it should "identify dirty set for fbu updates" in {
         postCountInUserRule.dirtiedSet( fbuUserLiz ) should be ( Set(IdLocation("liz")) )
         postCountInUserRule.dirtiedSet( fbuPost1 ) should be ( Set(
-            QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId"),
-            SnapshotLocation(QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") ) ) )
+            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId") ) ) )
     }
 
     it should "identify dirty set for delete" in {
         postCountInUserRule.dirtiedSet( deleteUserLiz ) should be ( Set(IdLocation("liz")) ) // TODO: optimize me
         postCountInUserRule.dirtiedSet( deletePost1 ) should be ( Set(
-            QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId"),
-            SnapshotLocation(QueryLocation(CollectionContainer("blog.posts"), IdLocation("post1"), "authorId") ) ) )
+            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId") ) ) )
     }
 
     /*
     it should "back propagate locations detected by processor" in {
-        val same = SameDocumentTie(CollectionContainer("blog.posts"))
+        val same = SameDocumentTie(CollectionContainer(s"$dbName.posts"))
         same.backPropagate(IdLocation( "post1"))) should be (IdLocation( "post1")))
 
         // when user information change, I need to flag dirty all posts with matching authorId
-        val follow = FollowKeyTie("blog.users", "authorId")
+        val follow = FollowKeyTie(s"$dbName.users", "authorId")
         follow.backPropagate(IdLocation( "liz"))) should be (SelectorLocation(MongoDBObject("authorId" -> "liz")))
 
         // when authorId in a post change, I need to flag dirty users which id was the previous value, and the one with new value (post count)
-        val reverseTop = ReverseKeyTie(CollectionContainer("blog.posts"), "authorId")
-        reverseTop.backPropagate(IdLocation( "post1"))) should be (BeforeAndAfterIdLocation(CollectionContainer("blog.posts"), MongoDBObject("_id" -> "post1"), "authorId"))
+        val reverseTop = ReverseKeyTie(CollectionContainer(s"$dbName.posts"), "authorId")
+        reverseTop.backPropagate(IdLocation( "post1"))) should be (BeforeAndAfterIdLocation(CollectionContainer(s"$dbName.posts"), MongoDBObject("_id" -> "post1"), "authorId"))
 
         // when authorId in a comment change, I need to flag dirty users which id was the previous value, and the one with new value (comment count)
-        val reverseSub = ReverseKeyTie(SubCollectionContainer("blog.posts","comments"), "authorId")
-        reverseSub.backPropagate(SelectorLocation(MongoDBObject("comments._id" -> "comment1"))) should be (BeforeAndAfterIdLocation(SubCollectionContainer("blog.posts", "comments"), MongoDBObject("comments._id" -> "comment1"), "authorId"))
+        val reverseSub = ReverseKeyTie(SubCollectionContainer(s"$dbName.posts","comments"), "authorId")
+        reverseSub.backPropagate(SelectorLocation(MongoDBObject("comments._id" -> "comment1"))) should be (BeforeAndAfterIdLocation(SubCollectionContainer(s"$dbName.posts", "comments"), MongoDBObject("comments._id" -> "comment1"), "authorId"))
 
         // when user information change, I need to flag dirty all posts with matching authorId
 /*
-        FollowKeyTie("blog.users", "authorId"),
+        FollowKeyTie(s"$dbName.users", "authorId"),
 */
     }
 */

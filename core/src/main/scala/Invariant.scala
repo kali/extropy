@@ -13,13 +13,24 @@ import mongoutils._
 
 abstract sealed class Change {
     def writtenCollection:String
+    def play(payloadMongo:MongoClient):WriteResult
+
+    def dbName = writtenCollection.split('.').head
+    def collectionName = writtenCollection.split('.').drop(1).mkString(".")
 }
 
-case class FullBodyUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change
-case class InsertChange(writtenCollection:String, documents:Stream[BSONObject]) extends Change
-case class DeleteChange(writtenCollection:String, selector:BSONObject) extends Change
+case class FullBodyUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change {
+    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).update(selector.asInstanceOf[DBObject],update.asInstanceOf[DBObject])
+}
+case class InsertChange(writtenCollection:String, documents:Stream[BSONObject]) extends Change {
+    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).insert(documents.toSeq.map( _.asInstanceOf[DBObject] ):_* )
+}
+case class DeleteChange(writtenCollection:String, selector:BSONObject) extends Change {
+    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).remove(selector.asInstanceOf[DBObject])
+}
 case class ModifiersUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change {
     def impactedFields:Set[String] = update.asInstanceOf[DBObject].values.flatMap( _.asInstanceOf[DBObject].keys ).toSet
+    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).update(selector.asInstanceOf[DBObject], update.asInstanceOf[DBObject])
 }
 
 
@@ -77,6 +88,26 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
         val reactant = reactionContainer.pull(payloadMongo, tie.resolve(this, location))
         val effects = reaction.process(reactant)
         effectContainer.setValues(payloadMongo, location, effects)
+    }
+
+    // returns (fieldName,expected,got)*
+    def checkOne(payloadMongo:MongoClient, location:Location):Iterable[(String,Option[AnyRef],Option[AnyRef])] = {
+        val reactant = reactionContainer.pull(payloadMongo, tie.resolve(this, location))
+        val effects = reaction.process(reactant)
+        effectContainer.pull(payloadMongo, location).flatMap { targetDbo =>
+            val target = new MongoDBObject(targetDbo)
+            new MongoDBObject(effects).flatMap{ case (k,v) =>
+                val got = target.getAs[AnyRef](k)
+                if(got != Option(v))
+                    Some(k,Option(v),got)
+                else
+                    None
+            }
+        }
+    }
+
+    def checkAll(payloadMongo:MongoClient):Traversable[(Location, String, AnyRef,AnyRef)] = {
+        effectContainer.iterator(payloadMongo).flatMap( loc => checkOne(payloadMongo, loc).map( e => (loc,e._1,e._2,e._3) ) )
     }
 
     def dirtiedSet(op:Change):Set[Location] =
@@ -166,7 +197,10 @@ case class IdLocation(id:AnyRef) extends Location {
 case class QueryLocation(container:Container, location:Location, field:String) extends Location {
     def asIdLocation = throw new IllegalStateException("can't make IdLocation from: " + this.toString)
     def asSelectorLocation = throw new IllegalStateException("can't make SelectorLocation from: " + this.toString)
-    def expand(mongo:MongoClient):Iterable[Location] = container.pull(mongo, location).headOption.map( doc => IdLocation(doc.getAs[AnyRef](field)) )
+    def expand(mongo:MongoClient):Iterable[Location] = {
+        println(s"XXXX  $container mongo:$mongo")
+        container.pull(mongo, location).map( doc => IdLocation(doc.getAs[AnyRef](field)) )
+    }
 }
 case class SnapshotLocation(query:QueryLocation) extends Location {
     def asIdLocation = throw new IllegalStateException

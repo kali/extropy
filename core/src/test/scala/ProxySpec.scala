@@ -11,25 +11,35 @@ import com.mongodb.casbah.Imports._
 
 class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with MongodbTemporary {
 
-    behavior of "An extropy proxy"
 
-    def withExtropy(testCode:((BaseExtropyContext,String) => Any)) {
-        val id = System.currentTimeMillis.toString
-        val dbName = s"extropy-spec-$id"
-        val extropy = ExtropyContext(mongoBackendClient(dbName), mongoBackendClient)
+    def withExtropy(testCode:((BaseExtropyContext,BlogFixtures) => Any)) {
+        val now = System.currentTimeMillis
+        val payloadDbName = s"extropy-spec-payload-$now"
+        val extropyDbName = s"extropy-spec-internal-$now"
+        val fixture = BlogFixtures(payloadDbName)
+        val extropy = ExtropyContext(mongoBackendClient(extropyDbName), mongoBackendClient)
+        fixture.allRules.foreach( rule => extropy.invariantDAO.salat.insert( Invariant(rule) ) )
         try {
-            extropy.invariantDAO.salat.save( Invariant(StringNormalizationRule(s"$id.users", "name", "normName")) )
-            testCode(extropy, id)
+            testCode(extropy, fixture)
         } finally {
-            mongoBackendClient.dropDatabase(dbName)
+            mongoBackendClient.dropDatabase(payloadDbName)
+            mongoBackendClient.dropDatabase(extropyDbName)
         }
+    }
+
+    behavior of "A synchronous proxy"
+
+    it should "deal with insert" in withExtropy { (extropy, fixture) =>
+        val proxy = SyncProxy(extropy)
+        import fixture._
+        proxy.doChange(InsertChange(s"$dbName.posts", Stream(post1)))
     }
 
     it should "leave messages on an arbitrary collection alone" in withExtropy { (extropy,id) =>
         pending
+/*
         val proxy = ExtropyProxy(extropy)
         val original = InsertChange(s"$id.not-users", Stream(MongoDBObject("name" -> "Kali")))
-/*
         val transformed = proxy.processChange(original)
         transformed should be(original)
 */

@@ -7,30 +7,32 @@ users: ( _id, name, postCount*, commentCount* )
 posts: ( _id, authorId, authorName*, title, searchableTitle*, comments[ { authorId, authorName* } ] )
 */
 
-object BlogFixtures {
+case class BlogFixtures(dbName:String) {
 
     // some rules
-    val searchableTitleRule = Rule(     CollectionContainer("blog.posts"), CollectionContainer("blog.posts"),
+    val searchableTitleRule = Rule(     CollectionContainer(s"$dbName.posts"), CollectionContainer(s"$dbName.posts"),
                                         SameDocumentTie(), StringNormalizationReaction("title", "searchableTitle"))
 
-    val authorNameInPostRule = Rule(    CollectionContainer("blog.posts"), CollectionContainer("blog.users"),
+    val authorNameInPostRule = Rule(    CollectionContainer(s"$dbName.posts"), CollectionContainer(s"$dbName.users"),
                                         FollowKeyTie("authorId"), CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
-    val postCountInUserRule = Rule(     CollectionContainer("blog.users"), CollectionContainer("blog.posts"),
+    val postCountInUserRule = Rule(     CollectionContainer(s"$dbName.users"), CollectionContainer(s"$dbName.posts"),
                                         ReverseKeyTie("authorId"), CountReaction("postCount"))
 
-    val commentCountInUserRule = Rule(  CollectionContainer("blog.users"), SubCollectionContainer("blog.posts", "comments"),
+    val commentCountInUserRule = Rule(  CollectionContainer(s"$dbName.users"), SubCollectionContainer(s"$dbName.posts", "comments"),
                                         ReverseKeyTie("authorId"), CountReaction("commentCount"))
 
-    val authorNameInComment = Rule(     SubCollectionContainer("blog.posts","comments"), CollectionContainer("blog.users"),
+    val authorNameInComment = Rule(     SubCollectionContainer(s"$dbName.posts","comments"), CollectionContainer(s"$dbName.users"),
                                         FollowKeyTie("authorId"), CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
+    val allRules = Array(searchableTitleRule, authorNameInPostRule, postCountInUserRule /*, commentCountInUserRule, authorNameInComment*/) // FIXME
+
     // some monitored fields
-    val monitorUsersId = MonitoredField(CollectionContainer("blog.users"), "_id") // id can not change, but this allow to detect insertion of users
-    val monitorUsersName = MonitoredField(CollectionContainer("blog.users"), "name")
-    val monitorPostsTitle = MonitoredField(CollectionContainer("blog.posts"), "title")
-    val monitorPostsAuthorId = MonitoredField(CollectionContainer("blog.posts"), "authorId")
-    val monitorPostsCommentsAuthorId = MonitoredField(SubCollectionContainer("blog.posts", "comments"), "authorId")
+    val monitorUsersId = MonitoredField(CollectionContainer(s"$dbName.users"), "_id") // id can not change, but this allow to detect insertion of users
+    val monitorUsersName = MonitoredField(CollectionContainer(s"$dbName.users"), "name")
+    val monitorPostsTitle = MonitoredField(CollectionContainer(s"$dbName.posts"), "title")
+    val monitorPostsAuthorId = MonitoredField(CollectionContainer(s"$dbName.posts"), "authorId")
+    val monitorPostsCommentsAuthorId = MonitoredField(SubCollectionContainer(s"$dbName.posts", "comments"), "authorId")
 
     // some data
     val userLiz = MongoDBObject("_id" -> "liz", "name" -> "Elizabeth Lemon")
@@ -42,29 +44,29 @@ object BlogFixtures {
                     "comments" -> MongoDBList(MongoDBObject("authorId" -> "jack")))
 
     // some inserts
-    val insertUserLiz = InsertChange("blog.users", Stream( userLiz ))
-    val insertUsers = InsertChange("blog.users", Stream( userLiz, userJack, userCatLady ))
-    val insertNotUsers = InsertChange("blog.not-user", Stream( userLiz, userCatLady ))
-    val insertPost1 = InsertChange("blog.posts", Stream( post1 ))
-    val insertPosts = InsertChange("blog.posts", Stream( post1, post2 ))
+    val insertUserLiz = InsertChange(s"$dbName.users", Stream( userLiz ))
+    val insertUsers = InsertChange(s"$dbName.users", Stream( userLiz, userJack, userCatLady ))
+    val insertNotUsers = InsertChange(s"$dbName.not-user", Stream( userLiz, userCatLady ))
+    val insertPost1 = InsertChange(s"$dbName.posts", Stream( post1 ))
+    val insertPosts = InsertChange(s"$dbName.posts", Stream( post1, post2 ))
 
     // some modifiers updates
-    val setNameOnUserLiz = ModifiersUpdateChange("blog.users", MongoDBObject("_id" -> "liz"),
+    val setNameOnUserLiz = ModifiersUpdateChange(s"$dbName.users", MongoDBObject("_id" -> "liz"),
         MongoDBObject("$set" -> MongoDBObject("name" -> "Elizabeth Miervaldis Lemon")))
-    val setTitleOnPost1 = ModifiersUpdateChange("blog.posts", MongoDBObject("_id" -> "post1"),
+    val setTitleOnPost1 = ModifiersUpdateChange(s"$dbName.posts", MongoDBObject("_id" -> "post1"),
         MongoDBObject("$set" -> MongoDBObject("title" -> "Other title for post 1")))
-    val setAuthorIdOnPost1 = ModifiersUpdateChange("blog.posts", MongoDBObject("_id" -> "post1"),
+    val setAuthorIdOnPost1 = ModifiersUpdateChange(s"$dbName.posts", MongoDBObject("_id" -> "post1"),
         MongoDBObject("$set" -> MongoDBObject("authorId" -> "jack")))
-    val setNotNameOnUsers = ModifiersUpdateChange("blog.users", MongoDBObject("_id" -> "liz"),
+    val setNotNameOnUsers = ModifiersUpdateChange(s"$dbName.users", MongoDBObject("_id" -> "liz"),
         MongoDBObject("$set" -> MongoDBObject("role" -> "Producer")))
 
     // some full body updates
-    val fbuUserLiz = FullBodyUpdateChange("blog.users", MongoDBObject("_id" -> "liz"), userLiz)
-    val fbuPost1 = FullBodyUpdateChange("blog.posts", MongoDBObject("_id" -> "post1"), post1)
+    val fbuUserLiz = FullBodyUpdateChange(s"$dbName.users", MongoDBObject("_id" -> "liz"), userLiz)
+    val fbuPost1 = FullBodyUpdateChange(s"$dbName.posts", MongoDBObject("_id" -> "post1"), post1)
 
     // some delete
-    val deleteUserLiz = DeleteChange("blog.users", MongoDBObject("_id" -> "liz"))
-    val deletePost1 = DeleteChange("blog.posts", MongoDBObject("_id" -> "post1"))
+    val deleteUserLiz = DeleteChange(s"$dbName.users", MongoDBObject("_id" -> "liz"))
+    val deletePost1 = DeleteChange(s"$dbName.posts", MongoDBObject("_id" -> "post1"))
 
 }
 
