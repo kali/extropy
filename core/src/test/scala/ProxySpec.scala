@@ -47,6 +47,37 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
         }
     }
 
+    it should "deal with updates" in withExtropy { (extropy, fixture) =>
+        val proxy = SyncProxy(extropy)
+        import fixture._
+        proxy.doChange(insertUsers)
+        proxy.doChange(insertPosts)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+        proxy.doChange(setNameOnUserLiz)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+        proxy.doChange(setTitleOnPost1)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+        proxy.doChange(setAuthorIdOnPost1)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+        proxy.doChange(setNotNameOnUsers)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+        proxy.doChange(fbuUserLiz)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+        proxy.doChange(fbuPost1)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+    }
+
+    it should "deal with deletes" in withExtropy { (extropy, fixture) =>
+        val proxy = SyncProxy(extropy)
+        import fixture._
+        proxy.doChange(insertUsers)
+        proxy.doChange(insertPosts)
+        proxy.doChange(deletePost1)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+        proxy.doChange(deleteUserLiz)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+    }
+
     it should "leave messages on an arbitrary collection alone" in withExtropy { (extropy,id) =>
         pending
 /*
