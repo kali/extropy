@@ -72,7 +72,7 @@ class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSend
         (1 to 100).foreach { i =>
             extropy.payloadMongo(s"db-$id")("users").save( MongoDBObject("name" -> s"Kali-$i") )
         }
-        rule.activeSync(extropy)
+        rule.fixAll(extropy.payloadMongo)
         extropy.payloadMongo(s"db-$id")("users").foreach { dbo =>
             dbo.keys should contain("normName")
             dbo.keys should contain("name")

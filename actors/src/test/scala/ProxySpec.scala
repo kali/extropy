@@ -17,6 +17,8 @@ import akka.testkit.{ TestKit, TestActor }
 class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLike
         with MongodbTemporary with ShouldMatchers with Eventually {
 
+    import fixture._
+
     behavior of "An extropy proxy"
 
     it should "propagate and acknowledge configuration bumps" in withProxiedClient { (extropy, mongoClient) =>
@@ -37,7 +39,7 @@ class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLik
     }
 
     implicit override val patienceConfig =
-        PatienceConfig(timeout = scaled(Span(2, Seconds)), interval = scaled(Span(50, Millis)))
+        PatienceConfig(timeout = scaled(Span(3, Seconds)), interval = scaled(Span(100, Millis)))
 
     def withProxiedClient(testCode:(BaseExtropyContext, MongoClient) => Any) {
         val id = System.currentTimeMillis.toString

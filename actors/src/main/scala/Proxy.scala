@@ -19,21 +19,27 @@ object ExtropyProxyActor {
         Props(classOf[ExtropyProxyActor], extropy, Some(config))
 }
 
-class ExtropyProxyActor(
-                    extropy:BaseExtropyContext,
-                    initialConfiguration:Option[DynamicConfiguration]) extends Actor {
+class ExtropyProxyActor(    extropy:BaseExtropyContext,
+                            optionalConfiguration:Option[DynamicConfiguration]) extends Actor {
+
+    var logic = ExtropyProxyLogic(extropy, optionalConfiguration)
 
     var responseId:Int = 0
-    def nextResponseId = { responseId+=1 ; responseId }
+    var processing:AnalysedChange = null
 
-    var proxy:ExtropyProxy = ExtropyProxy(extropy, initialConfiguration)
+    def nextResponseId = { responseId+=1 ; responseId }
 
     def receive = {
         case c:DynamicConfiguration => {
-            proxy = ExtropyProxy(extropy, initialConfiguration)
-            sender ! AckDynamicConfiguration(proxy.configuration)
+            logic = ExtropyProxyLogic(extropy, Some(c))
+            sender ! AckDynamicConfiguration(logic.configuration)
         }
-        case msg@TargettedMessage(Client,_) => sender ! msg
+        case msg@TargettedMessage(Client,_) => 
+            if(processing != null) {
+                logic.postChange(processing)
+                processing = null
+            }
+            sender ! msg
         case msg@TargettedMessage(Server, op) if(op.op.isExtropyCommand) => {
             sender ! TargettedMessage(Client,
                         CraftedMessage(nextResponseId, op.header.requestId,
@@ -42,10 +48,11 @@ class ExtropyProxyActor(
         case msg@TargettedMessage(Server,mongo) =>
             if(mongo.isChange) {
                 val originalChange:Change = mongo.op.asChange
-                val alteredChange:Change = proxy.processChange(originalChange)
-                if(alteredChange != originalChange)
+                processing = logic.preChange(originalChange)
+                if(processing.alteredChange != originalChange)
                     sender ! TargettedMessage(Server,
-                        CraftedMessage(mongo.header.requestId, mongo.header.responseTo, mongo.op.adoptChange(alteredChange))
+                        CraftedMessage(mongo.header.requestId, mongo.header.responseTo,
+                            mongo.op.adoptChange(processing.alteredChange))
                     )
                 else
                     sender ! msg
@@ -62,7 +69,7 @@ class ExtropyProxyActor(
         command match {
             case "status" => OpReply(0, 0, 0, 1, Stream(MongoDBObject("ok" -> 1)))
             case "configVersion" => OpReply(0, 0, 0, 1,
-                            Stream(MongoDBObject("ok" -> 1, "version" -> proxy.configuration.version)))
+                            Stream(MongoDBObject("ok" -> 1, "version" -> logic.configuration.version)))
         }
     }
 }

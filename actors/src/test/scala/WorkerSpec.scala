@@ -15,23 +15,31 @@ import scala.concurrent.Await
 
 import mongoutils._
 
-case class RemoteControledContainer(label:String) extends Container {
-    import mongo._
-    def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {}
-    def collection = label
+object RemoteControlLatch {
+    val latch = new java.util.concurrent.atomic.AtomicInteger(0)
+}
+
+case class RemoteControledContainer(name:String) extends Container {
+    val inner = CollectionContainer(name)
+    def collection = inner.collection
+    def collectionName = inner.collectionName
+    def dbName = inner.dbName
+    def pull(payloadMongo:MongoClient,loc:Location):Iterable[DBObject] = inner.pull(payloadMongo, loc)
+    def setValues(payloadMongo:MongoClient,location:Location,values:MongoDBObject) {
+        inner.setValues(payloadMongo, location, values)
+    }
     def iterator(payloadMongo:MongoClient) = {
-        RemoteControledSyncRule.latch.set(1)
-        while(RemoteControledSyncRule.latch.get() < 2)
+        RemoteControlLatch.latch.set(1)
+        while(RemoteControlLatch.latch.get() < 2)
             Thread.sleep(10)
-        List()
+        inner.iterator(payloadMongo)
     }
 }
 
 object RemoteControledSyncRule {
-    def apply(junk:String) = Rule(CollectionContainer(junk), SameDocumentContact(), StringNormalizationProcessor("a", "b"))
-    val latch = new java.util.concurrent.atomic.AtomicInteger(0)
+    def apply(label:String) =
+        Rule(new RemoteControledContainer(label), new RemoteControledContainer(label), SameDocumentTie(), StringNormalizationReaction("foo", "bar"))
 }
-
 
 class WorkerSpec extends TestKit(ActorSystem("workerspec"))
     with FlatSpecLike with ShouldMatchers with MongodbTemporary with Eventually {
@@ -60,8 +68,8 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
 
     behavior of "A foreman"
 
-    it should "maintain its claim on an invariant" in withExtropy { (id,extropy) =>
-        val invariant = Invariant(RemoteControledSyncRule("foo"))
+    it should "maintain its claim on an invariant"  taggedAs(Tag("s")) in withExtropy { (id,extropy) =>
+        val invariant = Invariant(RemoteControledSyncRule("foo.bar"))
         extropy.invariantDAO.salat.save(invariant)
         implicit val _locker = LockerIdentity(id.toString)
         val locked1 = extropy.prospect.get
@@ -75,7 +83,7 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
     }
 
     it should "switch its invariant from Created to Sync" taggedAs(Tag("r")) in withExtropy { (id,extropy) =>
-        val invariant = Invariant(RemoteControledSyncRule("foo"))
+        val invariant = Invariant(RemoteControledSyncRule("foo.baz"))
         extropy.invariantDAO.salat.save(invariant)
         implicit val _locker = LockerIdentity(id.toString)
         val locked1 = extropy.prospect.get
@@ -92,11 +100,11 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
 
     behavior of "A worker"
 
-    it should "bring an invariant from Created to Run, through Sync" in withExtropy { (id,extropy) =>
+    it should "bring an invariant from Created to Run, through Sync" taggedAs(Tag("KaliTest")) in withExtropy { (id,extropy) =>
         val name = "overseer-" + id
         val overseer = system.actorOf(Overseer.props(extropy, name), name)
         val otherAgent = system.actorOf(ExtropyAgent.props("agent-" + id, extropy, testActor))
-        val invariant = Invariant(RemoteControledSyncRule("foo"))
+        val invariant = Invariant(RemoteControledSyncRule("foo.bab"))
         extropy.agentDAO.readConfigurationVersion should be(0)
         eventually {
             extropy.agentDAO.readMinimumConfigurationVersion should be(0)
@@ -113,8 +121,8 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
             extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(false)
             extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Sync)
         }
-        RemoteControledSyncRule.latch.get() should be(1)
-        RemoteControledSyncRule.latch.set(2)
+        RemoteControlLatch.latch.get() should be(1)
+        RemoteControlLatch.latch.set(2)
         eventually {
             extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
             extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Run)

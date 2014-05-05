@@ -1,13 +1,14 @@
 package org.zoy.kali.extropy
 
-abstract class ExtropyProxy(extropy:BaseExtropyContext, optionalConfiguration:Option[DynamicConfiguration]=None) {
+case class AnalysedChange(originalChange:Change, dirtiedSet:List[(Invariant, Set[Location])], alteredChange:Change)
+
+case class ExtropyProxyLogic(extropy:BaseExtropyContext, optionalConfiguration:Option[DynamicConfiguration]=None) {
 
     val configuration = optionalConfiguration.getOrElse(extropy.pullConfiguration)
 
-    // Change -> preChange -> AnalysedChange
-    def preChange(originalChange:Change) = AnalysedChange(originalChange,
+    // Change -> analyse -> AnalysedChange
+    def analyse(originalChange:Change) = AnalysedChange(originalChange,
         configuration.invariants.map{ inv => (inv, inv.rule.dirtiedSet(originalChange) ) }, originalChange)
-    case class AnalysedChange(originalChange:Change, dirtiedSet:List[(Invariant, Set[Location])], alteredChange:Change)
 
     // AnalysedChange -> snapshot -> AnalysedChange
     def snapshot(change:AnalysedChange):AnalysedChange = {
@@ -15,16 +16,21 @@ abstract class ExtropyProxy(extropy:BaseExtropyContext, optionalConfiguration:Op
         AnalysedChange(change.originalChange, snapped, change.alteredChange)
     }
 
+    def preChange(originalChange:Change) = snapshot(analyse(originalChange))
+
+    def postChange(change:AnalysedChange) {
+        change.dirtiedSet.foreach { case(inv, locations) => locations.flatMap( _.expand(extropy.payloadMongo) ).foreach( inv.rule.fixOne(extropy.payloadMongo, _ ) ) }
+    }
 }
 
-case class SyncProxy(extropy:BaseExtropyContext, optionalConfiguration:Option[DynamicConfiguration] = None)
-    extends ExtropyProxy(extropy, optionalConfiguration) {
+case class SyncProxy(extropy:BaseExtropyContext, optionalConfiguration:Option[DynamicConfiguration] = None) {
+
+    val logic = ExtropyProxyLogic(extropy, optionalConfiguration)
 
     def doChange(change:Change) = {
-        val analysed = preChange(change)
-        val snapped = snapshot(analysed)
-        val result = snapped.alteredChange.play(extropy.payloadMongo)
-        snapped.dirtiedSet.foreach { case(inv, locations) => locations.flatMap( _.expand(extropy.payloadMongo) ).foreach( inv.rule.fixOne(extropy.payloadMongo, _ ) ) }
+        val processedChange = logic.preChange(change)
+        val result = processedChange.alteredChange.play(extropy.payloadMongo)
+        logic.postChange(processedChange)
         result
     }
 
