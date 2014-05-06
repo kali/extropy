@@ -11,7 +11,6 @@ import com.mongodb.casbah.Imports._
 
 class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with MongodbTemporary {
 
-
     def withExtropy(testCode:((BaseExtropyContext,BlogFixtures) => Any)) {
         val now = System.currentTimeMillis
         val payloadDbName = s"extropy-spec-payload-$now"

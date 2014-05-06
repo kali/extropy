@@ -13,3 +13,13 @@ object Extropy extends BaseExtropyContext {
     val agentDAO = new ExtropyAgentDescriptionDAO(extropyDatabase, agentLockDuration)
     val invariantDAO = new InvariantDAO(extropyDatabase, invariantLockDuration)
 }
+
+/*
+% MONGO_FOR_TEST=localhost:27017 ./sbt
+[...]
+test:console
+[...]
+val client = MongoClient()
+val extropy = ExtropyContext(client("extropy"), client)
+BlogFixtures("blog").allRules.foreach( r => extropy.invariantDAO.salat.insert(Invariant(r)) )
+*/

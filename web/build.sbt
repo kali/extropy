@@ -3,10 +3,11 @@ name := "extropy-web"
 version := "1.0-SNAPSHOT"
 
 libraryDependencies ++= Seq(
-  cache,
-  "se.radley" %% "play-plugins-salat" % "1.4.0",
-  "org.webjars" %% "webjars-play" % "2.2.1-2",
-  "org.webjars" % "bootstrap" % "3.1.0"
+    cache,
+    "se.radley" %% "play-plugins-salat" % "1.4.0",
+    "org.webjars" %% "webjars-play" % "2.2.1-2",
+    "com.typesafe.scala-logging" %% "scala-logging-slf4j" % "2.1.2",
+    "org.webjars" % "bootstrap" % "3.1.0"
 )
 
 play.Project.playScalaSettings

@@ -26,11 +26,16 @@
 
     <table class="table table-bordered table-condensed">
         <thead>
-            <tr><th>Name</th><th>Foreman</th><th>Status</th><th>Command</th></tr>
+            <tr><th>In</th>
+                <th>do</th>
+                <th>from</th>
+                <th>Foreman</th><th>Status</th><th>Command</th></tr>
         </thead>
             @invariants.map { inv =>
                 <tr class="">
-                    <td>@inv._id</td>
+                    <td>In&nbsp;@Html(inv.rule.effectContainer.toLabel)</td>
+                    <td>@Html(inv.rule.reaction.toLabel)</td>
+                    <td>@Html(inv.rule.tie.toLabel) @Html(inv.rule.reactionContainer.toLabel)</td>
                     @if(inv.emlp.stillValid) {
                         <td class="success">@inv.emlp.locker</td>
                     } else {

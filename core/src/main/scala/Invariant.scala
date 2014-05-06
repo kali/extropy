@@ -129,6 +129,8 @@ abstract class Container {
     def pull(payloadMongo:MongoClient, loc:Location):Iterable[DBObject]
 
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject)
+
+    def toLabel:String
 }
 
 case class CollectionContainer(collectionFullName:String) extends Container {
@@ -152,6 +154,8 @@ case class CollectionContainer(collectionFullName:String) extends Container {
             multi=true
         )
     }
+
+    def toLabel = s"<i>$collectionFullName</i>"
 }
 
 case class SubCollectionContainer(collectionFullName:String, arrayField:String) extends Container {
@@ -162,6 +166,7 @@ case class SubCollectionContainer(collectionFullName:String, arrayField:String) 
     def pull(payloadMongo:MongoClient, loc:Location):Iterable[DBObject] = null
     def collection:String = collectionFullName
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {}
+    def toLabel = s"<i>$collectionFullName.$arrayField</i>"
 }
 
 // LOCATIONS
@@ -218,14 +223,18 @@ abstract class Tie {
 
     def resolve(rule:Rule, from:Location):Location
     def backPropagate(rule:Rule, location:Location):Iterable[Location]
+
+    def toLabel:String
 }
 
-case class SameDocumentTie extends Tie {
+case class SameDocumentTie() extends Tie {
     def reactionContainerMonitoredFields = Set()
     def effectContainerMonitoredFields = Set()
 
     def resolve(rule:Rule, from:Location) = from
     def backPropagate(rule:Rule, location:Location):Iterable[Location] = Some(location.optimize)
+
+    def toLabel = "from the same document in"
 }
 
 case class FollowKeyTie(localFieldName:String) extends Tie {
@@ -238,6 +247,8 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
         case idl:IdLocation => QueryLocation(rule.effectContainer, idl, localFieldName)
     }
     def backPropagate(rule:Rule, location:Location):Iterable[Location] = Some(SelectorLocation(MongoDBObject(localFieldName -> location.asIdLocation.id)).optimize)
+
+    def toLabel = s"following <i>$localFieldName</i> to"
 }
 
 case class ReverseKeyTie(reactionFieldName:String) extends Tie {
@@ -248,12 +259,14 @@ case class ReverseKeyTie(reactionFieldName:String) extends Tie {
         val q = QueryLocation(rule.reactionContainer, location.asSelectorLocation.optimize, reactionFieldName)
         Array(SnapshotLocation(q), q)
     }
+    def toLabel = s"searching by <i>$reactionFieldName</i> in"
 }
 
 // REACTION
 @Salat abstract class Reaction {
     def reactionFields:Set[String]
     def process(data:Traversable[DBObject]):DBObject
+    def toLabel:String
 }
 
 case class CopyField(from:String, to:String)
@@ -262,11 +275,13 @@ case class CopyFieldsReaction(fields:List[CopyField]) extends Reaction {
     def process(data:Traversable[DBObject]) = data.headOption.map { doc =>
         MongoDBObject(fields.map { pair => (pair.to, doc.getAs[AnyRef](pair.from)) })
     }.getOrElse(MongoDBObject.empty)
+    def toLabel = "copy " + fields.map( f => "<i>%s</i> as <i>%s</i>".format(f.from, f.to) ).mkString(", ")
 }
 
 case class CountReaction(field:String) extends Reaction {
     val reactionFields:Set[String] = Set()
     def process(data:Traversable[DBObject]) = MongoDBObject(field -> data.size)
+    def toLabel = s"count as <i>$field</i>"
 }
 
 // FOR TESTS
@@ -277,6 +292,7 @@ case class StringNormalizationReaction(from:String, to:String) extends Reaction 
         case Some(obj) => obj.get(from).toString.toLowerCase
         case None => null
     }))
+    def toLabel = s"normalize <i>$from</i> as <i>$to</i>"
 }
 
 

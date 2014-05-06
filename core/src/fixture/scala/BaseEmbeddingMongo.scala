@@ -39,7 +39,6 @@ trait MongodbTemporary extends BeforeAndAfterAll { this: Suite =>
     }
 
     override def afterAll() {
-        mongoBackendClient.databaseNames.filter( _.startsWith("extropy-spec" ) ).foreach( mongoBackendClient.dropDatabase(_) )
         if(mongoProcess != null) mongoProcess.stop
         if(mongoExecutable != null) mongoExecutable.stop
         if(mongoBackendClient != null) mongoBackendClient.close
