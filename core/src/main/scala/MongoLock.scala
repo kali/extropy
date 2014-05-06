@@ -6,6 +6,8 @@ import com.mongodb.casbah.Imports._
 import scala.concurrent.duration._
 import com.novus.salat.annotations._
 
+import com.typesafe.scalalogging.slf4j.StrictLogging
+
 object MongoUtils {
     def recursiveMerge( docs:DBObject* ):DBObject =
         docs.foldLeft(MongoDBObject.empty) { (aggregate, increment) =>
@@ -32,7 +34,7 @@ object MongoLock {
 case class MongoLockingPool(
     collection:MongoCollection,
     defaultTimeout:FiniteDuration=1 second
-) {
+) extends StrictLogging {
 
     import MongoUtils.recursiveMerge
 
@@ -58,14 +60,17 @@ case class MongoLockingPool(
 
     def lockOne(selectorCriteria:DBObject=null,sortCriteria:DBObject=null,
                 updater:DBObject=null,timeout:FiniteDuration=defaultTimeout)
-                (implicit by:LockerIdentity):Option[DBObject] =
-        collection.findAndModify(
+                (implicit by:LockerIdentity):Option[DBObject] = {
+        val result = collection.findAndModify(
             recursiveMerge(defaultLockingQueryCriteria,
                 MongoDBObject( s"$subfield.lu" -> MongoDBObject("$lt" -> new Date()) ),
                 Option(selectorCriteria).getOrElse(MongoDBObject.empty)),
             sort=if(sortCriteria != null) sortCriteria else defaultLockingSortCriteria,
             update = if(updater!=null) recursiveMerge(lockUpdate(timeout), updater) else lockUpdate(timeout)
         )
+        logger.trace(s"lockOne $collection: $by locks $result")
+        result
+    }
 
     def cleanupOldLocks {
         collection.remove(MongoDBObject( s"$subfield.lu" -> MongoDBObject("$lt" -> new Date()) ))
@@ -75,6 +80,7 @@ case class MongoLockingPool(
         collection.insert(recursiveMerge(doc, MongoDBObject(subfield ->
             MongoDBObject("lb" -> by.id, "lu" -> new Date(timeout.fromNow.time.toMillis))
         )))
+        logger.trace(s"insertLocked $collection: $by creates and locks $doc")
     }
 
     def ownedLockQueryCriteria(lock:DBObject)(implicit by:LockerIdentity) = MongoDBObject(
@@ -91,10 +97,11 @@ case class MongoLockingPool(
         else
             collection.findAndModify(ownedLockQueryCriteria(lock), u)
         ).orElse(throw new IllegalStateException(s"failure to release $lock in $collection because: ${diagnoseFailure(lock)}"))
+        logger.trace(s"release $collection: $by release ${lock._id} delete=$delete update=$update")
     }
 
-    def relock(lock:DBObject,timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity):DBObject =
-        collection.findAndModify(
+    def relock(lock:DBObject,timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity):DBObject = {
+        val result = collection.findAndModify(
             query= ownedLockQueryCriteria(lock),
             fields= MongoDBObject.empty,
             sort= MongoDBObject.empty,
@@ -103,6 +110,9 @@ case class MongoLockingPool(
             returnNew= true,
             upsert= false
         ).getOrElse(throw new IllegalStateException(s"failure to relock $lock in $collection because: ${diagnoseFailure(lock)}"))
+        logger.trace(s"relock $collection: $by relock ${lock} [${ownedLockQueryCriteria(lock)}] for $defaultTimeout")
+        result
+    }
 
     def diagnoseFailure(lock:DBObject)(implicit by:LockerIdentity):String =
         collection.findOne(MongoDBObject("_id" -> lock.get("_id"))) match {

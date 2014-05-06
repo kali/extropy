@@ -81,6 +81,7 @@ class Foreman(extropy:BaseExtropyContext, var invariant:Invariant, implicit val 
                 case Created => expectedVersion = extropy.switchInvariantTo(invariant, Sync)
                 case Sync if(statusChange) =>
                         scala.concurrent.Future {
+                            log.info("Start sync")
                             invariant.rule.fixAll(extropy.payloadMongo)
                             log.info("Done sync")
                             SyncDone

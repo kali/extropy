@@ -1,0 +1,20 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+	<appender name="rootLogger" class="ch.qos.logback.core.ConsoleAppender">
+		<encoder>
+			<pattern>%-8r [%t] %-5p %c - %m%n</pattern>
+		</encoder>
+	</appender>
+	<root level="INFO">
+		<appender-ref ref="rootLogger" />
+	</root>
+	<logger name="com.mongodb" level="INFO" />
+
+    <!--
+	<logger name="org.zoy.kali" level="DEBUG" />
+	<logger name="org.zoy.kali.extropy.mongoutils" level="TRACE" />
+	<logger name="org.zoy.kali.extropy.ExtropyAgentDescriptionDAO" level="DEBUG" />
+	<logger name="org.zoy.kali.extropy.ExtropyAgent" level="DEBUG" />
+    -->
+
+</configuration>

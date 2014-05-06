@@ -50,7 +50,7 @@ class InvariantMongoSpec extends FlatSpec with ShouldMatchers with MongodbTempor
     it should "fix all searchableTitle" in {
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post1, post2)
-        searchableTitleRule.activeSync(mongoBackendClient)
+        searchableTitleRule.fixAll(mongoBackendClient)
 
         mongoBackendClient(dbName)("posts").findOne(MongoDBObject("_id" -> "post1")).get should be(
             post1 ++ ("searchableTitle" -> "title for post 1")
@@ -62,7 +62,7 @@ class InvariantMongoSpec extends FlatSpec with ShouldMatchers with MongodbTempor
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post1, post2)
         mongoBackendClient(dbName)("users").insert(userLiz, userJack)
-        authorNameInPostRule.activeSync(mongoBackendClient)
+        authorNameInPostRule.fixAll(mongoBackendClient)
         mongoBackendClient(dbName)("posts").findOne(MongoDBObject("_id" -> "post1")).get.get("authorName") should be("Elizabeth Lemon")
         mongoBackendClient(dbName)("posts").findOne(MongoDBObject("_id" -> "post2")).get.get("authorName") should be("Elizabeth Lemon")
     }
@@ -71,7 +71,7 @@ class InvariantMongoSpec extends FlatSpec with ShouldMatchers with MongodbTempor
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post1,post2)
         mongoBackendClient(dbName)("users").insert(userLiz, userJack)
-        postCountInUserRule.activeSync(mongoBackendClient)
+        postCountInUserRule.fixAll(mongoBackendClient)
         mongoBackendClient(dbName)("users").findOne(MongoDBObject("_id" -> "liz")) should be(
             Some(userLiz ++ ("postCount" -> 2))
         )
@@ -88,7 +88,7 @@ class InvariantMongoSpec extends FlatSpec with ShouldMatchers with MongodbTempor
         var errors = searchableTitleRule.checkAll(mongoBackendClient)
         errors should have size(2)
 
-        searchableTitleRule.activeSync(mongoBackendClient)
+        searchableTitleRule.fixAll(mongoBackendClient)
         errors = searchableTitleRule.checkAll(mongoBackendClient)
         errors should have size(0)
     }
@@ -100,7 +100,7 @@ class InvariantMongoSpec extends FlatSpec with ShouldMatchers with MongodbTempor
         var errors = authorNameInPostRule.checkAll(mongoBackendClient)
         errors should have size(2)
 
-        authorNameInPostRule.activeSync(mongoBackendClient)
+        authorNameInPostRule.fixAll(mongoBackendClient)
         errors = authorNameInPostRule.checkAll(mongoBackendClient)
         errors should have size(0)
     }
@@ -112,7 +112,7 @@ class InvariantMongoSpec extends FlatSpec with ShouldMatchers with MongodbTempor
         var errors = postCountInUserRule.checkAll(mongoBackendClient)
         errors should have size(2)
 
-        postCountInUserRule.activeSync(mongoBackendClient)
+        postCountInUserRule.fixAll(mongoBackendClient)
         errors = postCountInUserRule.checkAll(mongoBackendClient)
         errors should have size(0)
     }

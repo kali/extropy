@@ -1,7 +1,6 @@
 package org.zoy.kali.extropy
 
 import org.scalatest._
-import org.scalatest.matchers.ShouldMatchers
 
 import de.flapdoodle.embed.mongo.{ MongodExecutable, MongodProcess, MongodStarter, Command }
 import de.flapdoodle.embed.process.runtime._
@@ -35,24 +34,15 @@ trait MongodbTemporary extends BeforeAndAfterAll { this: Suite =>
                 mongoExecutable = runtime.prepare(config)
                 mongoProcess = mongoExecutable.start
                 Thread.sleep(1000)
-        }
-        mongoBackendClient = MongoClient("127.0.0.1", mongoBackendPort);
-        //        println("mongo backend running on port " + mongoBackendPort)
+          }
+          mongoBackendClient = MongoClient("127.0.0.1", mongoBackendPort)
     }
 
     override def afterAll() {
+        mongoBackendClient.databaseNames.filter( _.startsWith("extropy-spec" ) ).foreach( mongoBackendClient.dropDatabase(_) )
         if(mongoProcess != null) mongoProcess.stop
         if(mongoExecutable != null) mongoExecutable.stop
         if(mongoBackendClient != null) mongoBackendClient.close
     }
 }
 
-class MongodbTemporarySpec extends FlatSpec with MongodbTemporary with ShouldMatchers {
-    behavior of "A temporary mongo"
-
-    it should "be running" in {
-        mongoBackendClient("test")("col").drop()
-        mongoBackendClient("test")("col").save(MongoDBObject("a" -> 2))
-        mongoBackendClient("test")("col").count() should be(1)
-    }
-}

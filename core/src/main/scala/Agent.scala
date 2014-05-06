@@ -13,9 +13,11 @@ import scala.concurrent.duration._
 
 import mongoutils._
 
+import com.typesafe.scalalogging.slf4j.StrictLogging
+
 case class ExtropyAgentDescription(_id:String, emlp:MongoLock, configurationVersion:Long=(-1L))
 
-class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration)(implicit ctx: com.novus.salat.Context) {
+class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration)(implicit ctx: com.novus.salat.Context) extends StrictLogging {
     val collection = db("agents")
     val salat = new SalatDAO[ExtropyAgentDescription,ObjectId](collection) {}
 
@@ -23,18 +25,22 @@ class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration
 
     def register(id:String, configurationVersion:Long) {
         agentMLP.cleanupOldLocks
+        logger.debug(s"Registering agent:$id (at version:$configurationVersion)")
         agentMLP.insertLocked(MongoDBObject("_id" -> id, "configurationVersion" -> configurationVersion))(LockerIdentity(id))
     }
 
     def ping(id:String, validity:FiniteDuration) {
+        logger.trace(s"Ping agent:$id")
         agentMLP.relock(MongoDBObject("_id" -> id), validity)(LockerIdentity(id))
     }
 
     def unregister(id:String) {
+        logger.debug(s"Unregister agent:$id")
         agentMLP.release(MongoDBObject("_id" -> id), delete=true)(LockerIdentity(id))
     }
 
     def ackVersion(id:String, version:Long) {
+        logger.debug(s"Agent ack version: agent:$id version:$version")
         collection.update(MongoDBObject("_id" -> id),
             MongoDBObject("$set" -> MongoDBObject("configurationVersion" -> version)))
     }

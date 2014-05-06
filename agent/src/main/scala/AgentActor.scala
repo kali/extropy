@@ -1,6 +1,7 @@
 package org.zoy.kali.extropy
 
 import akka.actor.{ ActorSystem, Actor, ActorRef, Props, Terminated, PoisonPill }
+import akka.event.Logging
 
 import scala.concurrent.duration._
 
@@ -8,6 +9,7 @@ import mongoutils._
 
 class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:ActorRef) extends Actor {
     object Ping
+    val logger = Logging(context.system, this)
     val pings = context.system.scheduler.schedule(0 milliseconds, extropy.agentHeartBeat,
                     self, Ping)(executor=context.system.dispatcher)
 
@@ -17,10 +19,12 @@ class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:Act
 
     def ping {
         var wanted = extropy.agentDAO.readConfigurationVersion
+        logger.debug(s"ping wanted:$wanted have:${configuration.version}")
         if(wanted != configuration.version) {
             while(wanted > configuration.version) {
                 configuration = extropy.pullConfiguration
                 wanted = extropy.agentDAO.readConfigurationVersion
+        logger.debug(s"pulled:${configuration.version}, now want:$wanted")
             }
             client ! configuration
         }

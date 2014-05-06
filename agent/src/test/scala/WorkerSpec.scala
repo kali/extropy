@@ -46,32 +46,32 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
 
     behavior of "An overseer"
 
-    it should "manifest itelf as an agent" in withExtropy { (id,extropy) =>
+    it should "manifest itelf as an agent" in withExtropy { (extropy,blog) =>
         val name = "overseer-" + System.currentTimeMillis
         extropy.agentDAO.collection.size should be(0)
         val overseer = system.actorOf(Overseer.props(extropy, name), name)
         eventually { extropy.agentDAO.collection.size should be(1) }
     }
 
-    it should "start a foreman to handle an invariant" in withExtropy { (id,extropy) =>
-        val name = "overseer-" + id
+    it should "start foremen to handle all invariants" in withExtropy { (extropy,blog) =>
+        val name = "overseer-" + blog.dbName
         val overseer = system.actorOf(Overseer.props(extropy, name), name)
-        val invariant = Invariant(RemoteControledSyncRule("foo"))
-        extropy.invariantDAO.salat.save(invariant)
-        extropy.invariantDAO.collection.size should be(1)
+        extropy.invariantDAO.collection.size should be >(0)
         eventually {
-            Await.result(
-                system.actorSelection(s"akka://workerspec/user/overseer-$id/foreman-${invariant._id}").resolveOne(10 millis),
-                10 millis)
+            extropy.invariantDAO.salat.find(MongoDBObject.empty).foreach { invariant =>
+                Await.result(
+                    system.actorSelection(s"akka://workerspec/user/$name/foreman-${invariant._id}").resolveOne(10 millis),
+                    10 millis)
+            }
         }
     }
 
     behavior of "A foreman"
 
-    it should "maintain its claim on an invariant"  taggedAs(Tag("s")) in withExtropy { (id,extropy) =>
+    it should "maintain its claim on an invariant" in withExtropy { (extropy,blog) =>
         val invariant = Invariant(RemoteControledSyncRule("foo.bar"))
         extropy.invariantDAO.salat.save(invariant)
-        implicit val _locker = LockerIdentity(id.toString)
+        implicit val _locker = LockerIdentity(blog.dbName)
         val locked1 = extropy.prospect.get
         val foreman = system.actorOf(Foreman.props(extropy, locked1, _locker))
         extropy.invariantDAO.salat.findOneByID(locked1._id).get.emlp.until.getTime should not
@@ -82,10 +82,10 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         }
     }
 
-    it should "switch its invariant from Created to Sync" taggedAs(Tag("r")) in withExtropy { (id,extropy) =>
+    it should "switch its invariant from Created to Sync" in withExtropy { (extropy,blog) =>
         val invariant = Invariant(RemoteControledSyncRule("foo.baz"))
         extropy.invariantDAO.salat.save(invariant)
-        implicit val _locker = LockerIdentity(id.toString)
+        implicit val _locker = LockerIdentity(blog.dbName)
         val locked1 = extropy.prospect.get
         val foreman = system.actorOf(Foreman.props(extropy, locked1, _locker))
         extropy.agentDAO.readConfigurationVersion should be(0)
@@ -100,35 +100,53 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
 
     behavior of "A worker"
 
-    it should "bring an invariant from Created to Run, through Sync" taggedAs(Tag("KaliTest")) in withExtropy { (id,extropy) =>
-        val name = "overseer-" + id
-        val overseer = system.actorOf(Overseer.props(extropy, name), name)
-        val otherAgent = system.actorOf(ExtropyAgent.props("agent-" + id, extropy, testActor))
-        val invariant = Invariant(RemoteControledSyncRule("foo.bab"))
+    it should "bring an invariant from Created to Run, through Sync" in withExtropy { (extropy,blog) =>
+        // don't actually use the blog fixture
+        extropy.invariantDAO.salat.remove(MongoDBObject.empty)
         extropy.agentDAO.readConfigurationVersion should be(0)
+
+        val invariant = Invariant(RemoteControledSyncRule("foo.bar"))
+
+        val name = "overseer"
+        val overseer = system.actorOf(Overseer.props(extropy, name), name)
+        val otherAgent = system.actorOf(ExtropyAgent.props("other", extropy, testActor), "other")
         eventually {
             extropy.agentDAO.readMinimumConfigurationVersion should be(0)
         }
         extropy.invariantDAO.salat.save(invariant)
-        var config = expectMsgClass(classOf[DynamicConfiguration])
-        extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Sync)
-        extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
+        extropy.agentDAO.bumpConfigurationVersion
+
+        eventually {
+            extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Sync)
+            extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
+        }
         Thread.sleep(3000)
         extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Sync)
         extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
-        otherAgent ! AckDynamicConfiguration(config)
+
         eventually {
-            extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(false)
+            val config2 = expectMsgClass(classOf[DynamicConfiguration])
+            config2.version should be(2L)
+            otherAgent ! AckDynamicConfiguration(config2)
+        }
+
+        eventually {
+            extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
             extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Sync)
         }
-        RemoteControlLatch.latch.get() should be(1)
+        eventually {
+            RemoteControlLatch.latch.get() should be(1)
+        }
         RemoteControlLatch.latch.set(2)
         eventually {
             extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
             extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Run)
         }
-        config = expectMsgClass(classOf[DynamicConfiguration])
-        otherAgent ! AckDynamicConfiguration(config)
+
+        val config3 = expectMsgClass(classOf[DynamicConfiguration])
+        config3.version should be(3L)
+        otherAgent ! AckDynamicConfiguration(config3)
+
         eventually {
             extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(false)
             extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Run)
@@ -137,21 +155,25 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
 
     // paraphernalia
 
-    def withExtropy(testCode: (String, BaseExtropyContext) => Any) {
-        val id = System.currentTimeMillis.toString
-        val dbName = s"extropy-spec-$id"
-        val extropy = ExtropyContext(mongoBackendClient(dbName), mongoBackendClient)
-        // try {
-            testCode(id, extropy)
-        //}
+    val databasesToDiscard = scala.collection.mutable.Buffer[String]()
+    def withExtropy(testCode:((BaseExtropyContext,BlogFixtures) => Any)) {
+        val now = System.currentTimeMillis
+        val payloadDbName = s"extropy-spec-payload-$now"
+        val extropyDbName = s"extropy-spec-internal-$now"
+        databasesToDiscard.append( payloadDbName, extropyDbName )
+        val fixture = BlogFixtures(payloadDbName)
+        val extropy = ExtropyContext(mongoBackendClient(extropyDbName), mongoBackendClient)
+        fixture.allRules.foreach( rule => extropy.invariantDAO.salat.insert( Invariant(rule) ) )
+        testCode(extropy, fixture)
     }
 
     override def afterAll {
         TestKit.shutdownActorSystem(system)
+        databasesToDiscard.foreach( mongoBackendClient.dropDatabase(_) )
         super.afterAll
     }
 
     implicit override val patienceConfig =
-        PatienceConfig(timeout = scaled(Span(2, Seconds)), interval = scaled(Span(50, Millis)))
+        PatienceConfig(timeout = scaled(Span(5, Seconds)), interval = scaled(Span(250, Millis)))
 
 }
