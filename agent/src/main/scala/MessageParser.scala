@@ -34,7 +34,10 @@ sealed abstract class Message {
     def op:Op
 
     def isChange:Boolean = op.asChange != null
-    def isCommand:Boolean = false
+    def isCommand:Boolean = op match {
+        case q:OpQuery => q.isCommand
+        case _ => false
+    }
 }
 
 case class IncomingMessage(val binary:ByteString) extends Message {
@@ -178,7 +181,23 @@ case class OpQuery( flags:Int, fullCollectionName:String, numberToSkip:Int, numb
         bsb.result
     }
     override def isExtropyCommand = fullCollectionName.endsWith(".$extropy")
-    def asChange = null // FIXME: findAndModify
+    def isCommand = fullCollectionName.endsWith(".$cmd")
+    def asChange:Change = if(isCommand) {
+        if(query.containsKey("findAndModify")) {
+            val update = query.asInstanceOf[DBObject].getAs[DBObject]("update").getOrElse(MongoDBObject.empty)
+            val selector = query.asInstanceOf[DBObject].getAs[DBObject]("query").get
+            val remove:Boolean = query.asInstanceOf[DBObject].getAs[Boolean]("remove").getOrElse(false)
+            val collection = fullCollectionName.split('.').head + "." + query.asInstanceOf[DBObject].getAs[String]("findAndModify").get
+            if(remove)
+                DeleteChange(collection, selector)
+            else if(new MongoDBObject(update.asInstanceOf[DBObject]).keys.exists( _.startsWith("$")))
+                ModifiersUpdateChange(collection, selector, update)
+            else
+                FullBodyUpdateChange(collection, selector, update)
+        } else
+            null
+    } else
+        null
 }
 object OpQuery {
     def parse(it:ByteIterator):OpQuery = {

@@ -4,9 +4,11 @@ import org.scalatest._
 import org.scalatest.matchers.ShouldMatchers
 
 import com.mongodb.casbah.Imports._
+import org.zoy.kali.extropy._
 
 class MessageParserSpec extends FlatSpec with ShouldMatchers {
     implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
+
     behavior of "Mongo message codec"
 
     it should "pass requestId, responseTo and size" in {
@@ -114,5 +116,55 @@ class MessageParserSpec extends FlatSpec with ShouldMatchers {
         op2.zero should be(0)
         op2.numberOfCursorIDs should be(3)
         op2.cursorIDs should be( Stream(2L, 12L, 42L) )
+    }
+
+    behavior of "Mongo message change detector"
+
+    it should "identify change in a op insert" in {
+        OpInsert(12, "foo.bar", Stream(MongoDBObject("a" -> 12))).asChange should be(
+            InsertChange("foo.bar", Stream(MongoDBObject("a" -> 12)))
+        )
+    }
+
+    it should "identify change in a op delete" in {
+        OpDelete(0, "foo.bar", 12, MongoDBObject("a" -> 12)).asChange should be(
+            DeleteChange("foo.bar", MongoDBObject("a" -> 12))
+        )
+    }
+
+    it should "identify change in both kinds of op update" in {
+        OpUpdate(0, "foo.bar", 12, MongoDBObject("a" -> 12), MongoDBObject("b" -> 42)).asChange should be(
+            FullBodyUpdateChange("foo.bar", MongoDBObject("a" -> 12), MongoDBObject("b" -> 42))
+        )
+        OpUpdate(0, "foo.bar", 12, MongoDBObject("a" -> 12), MongoDBObject("$set" -> MongoDBObject("b" -> 42))).asChange should be(
+            ModifiersUpdateChange("foo.bar", MongoDBObject("a" -> 12), MongoDBObject("$set" -> MongoDBObject("b" -> 42)))
+        )
+    }
+
+    it should "identify update in findAndModify with full body" in {
+        OpQuery(12, "foo.$cmd", 0, 0, MongoDBObject(
+            "findAndModify" -> "bar",
+            "query" -> MongoDBObject("a" -> 12),
+            "update" -> MongoDBObject("b" -> 42)), None).asChange should be(
+            FullBodyUpdateChange("foo.bar", MongoDBObject("a" -> 12), MongoDBObject("b" -> 42))
+        )
+    }
+
+    it should "identify update in findAndModify with modifiers" in {
+        OpQuery(12, "foo.$cmd", 0, 0, MongoDBObject(
+            "findAndModify" -> "bar",
+            "query" -> MongoDBObject("a" -> 12),
+            "update" -> MongoDBObject("$set" -> MongoDBObject("b" -> 42))), None).asChange should be(
+            ModifiersUpdateChange("foo.bar", MongoDBObject("a" -> 12), MongoDBObject("$set" -> MongoDBObject("b" -> 42)))
+        )
+    }
+
+    it should "identify delete in findAndModify with remove=true" in {
+        OpQuery(12, "foo.$cmd", 0, 0, MongoDBObject(
+            "findAndModify" -> "bar",
+            "query" -> MongoDBObject("a" -> 12),
+            "remove" -> true), None).asChange should be (
+                DeleteChange("foo.bar", MongoDBObject("a" -> 12))
+        )
     }
 }

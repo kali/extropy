@@ -34,6 +34,7 @@ case class RemoteControledContainer(name:String) extends Container {
             Thread.sleep(10)
         inner.iterator(payloadMongo)
     }
+    def toLabel = "RemoteControledContainer"
 }
 
 object RemoteControledSyncRule {
