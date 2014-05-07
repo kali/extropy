@@ -148,11 +148,13 @@ case class CollectionContainer(collectionFullName:String) extends Container {
     }
 
     def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {
-        payloadMongo(dbName)(collectionName).update(
-            location.asSelectorLocation.selector,
-            MongoDBObject("$set" -> values),
-            multi=true
-        )
+        if(!values.isEmpty) {
+            payloadMongo(dbName)(collectionName).update(
+                location.asSelectorLocation.selector,
+                MongoDBObject("$set" -> values),
+                multi=true
+            )
+        }
     }
 
     def toLabel = s"<i>$collectionFullName</i>"
