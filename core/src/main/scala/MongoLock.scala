@@ -8,14 +8,30 @@ import com.novus.salat.annotations._
 
 import com.typesafe.scalalogging.slf4j.StrictLogging
 
+import org.bson.BSONObject
+
+object BSONObjectConversions {
+    implicit def bsonObject2dbObject(bson:BSONObject):DBObject = bson match {
+        case dbo:DBObject => dbo
+        case bson => new BasicDBObject(bson.toMap)
+    }
+/*
+    implicit def bsonObject2scalaMap(bson:BSONObject):scala.collection.mutable.Map[String,AnyRef] =
+        scala.collection.convert.WrapAsScala.mapAsScalaMap[String,AnyRef](bson.toMap.asInstanceOf[java.util.Map[String,AnyRef]])
+*/
+    implicit def bsonObject2MongoDBObject(bson:BSONObject):MongoDBObject = new MongoDBObject(bson)
+}
+
+import BSONObjectConversions._
+
 object MongoUtils {
-    def recursiveMerge( docs:DBObject* ):DBObject =
+    def recursiveMerge( docs:BSONObject* ):BSONObject =
         docs.foldLeft(MongoDBObject.empty) { (aggregate, increment) =>
             (aggregate.toSeq ++ increment.toSeq).groupBy(_._1).map { case (key, value) =>
                 // groups are generated this way key1,[(key1,value1),(key1,value2)]
                 val values = value.map( _._2 )
-                val result = if(values.forall( _.isInstanceOf[DBObject] ))
-                    recursiveMerge(values.map( _.asInstanceOf[DBObject]):_*)
+                val result = if(values.forall( _.isInstanceOf[BSONObject] ))
+                    recursiveMerge(values.map( _.asInstanceOf[BSONObject]):_*)
                 else
                     values.last
                 (key, result)
@@ -40,27 +56,27 @@ case class MongoLockingPool(
 
     def subfield:String = "emlp"
 
-    def blessing:DBObject = MongoDBObject(subfield -> blessingData)
-    def blessingData:DBObject = MongoDBObject("lb" -> null, "lu" -> new Date(0))
+    def blessing:BSONObject = MongoDBObject(subfield -> blessingData)
+    def blessingData:BSONObject = MongoDBObject("lb" -> null, "lu" -> new Date(0))
     def bless(id:AnyRef) {
         collection.update(
             MongoDBObject("_id" -> id, subfield -> MongoDBObject("$exists" -> false)),
             MongoDBObject("$set" -> blessing))
     }
-    def blessed(o:DBObject) = recursiveMerge(o,blessing)
+    def blessed(o:BSONObject) = recursiveMerge(o,blessing)
 
-    def defaultLockingQueryCriteria:DBObject = MongoDBObject.empty
-    def defaultLockingSortCriteria:DBObject = MongoDBObject.empty
+    def defaultLockingQueryCriteria:BSONObject = MongoDBObject.empty
+    def defaultLockingSortCriteria:BSONObject = MongoDBObject.empty
 
-    def lockUpdate(timeout:FiniteDuration)(implicit by:LockerIdentity):DBObject =
+    def lockUpdate(timeout:FiniteDuration)(implicit by:LockerIdentity):BSONObject =
         MongoDBObject("$set" -> MongoDBObject(
             s"$subfield.lb" -> by.id,
             s"$subfield.lu" -> new Date(timeout.fromNow.time.toMillis)
         ))
 
-    def lockOne(selectorCriteria:DBObject=null,sortCriteria:DBObject=null,
-                updater:DBObject=null,timeout:FiniteDuration=defaultTimeout)
-                (implicit by:LockerIdentity):Option[DBObject] = {
+    def lockOne(selectorCriteria:BSONObject=null,sortCriteria:BSONObject=null,
+                updater:BSONObject=null,timeout:FiniteDuration=defaultTimeout)
+                (implicit by:LockerIdentity):Option[BSONObject] = {
         val result = collection.findAndModify(
             recursiveMerge(defaultLockingQueryCriteria,
                 MongoDBObject( s"$subfield.lu" -> MongoDBObject("$lt" -> new Date()) ),
@@ -76,19 +92,19 @@ case class MongoLockingPool(
         collection.remove(MongoDBObject( s"$subfield.lu" -> MongoDBObject("$lt" -> new Date()) ))
     }
 
-    def insertLocked(doc:DBObject, timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity) {
+    def insertLocked(doc:BSONObject, timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity) {
         collection.insert(recursiveMerge(doc, MongoDBObject(subfield ->
             MongoDBObject("lb" -> by.id, "lu" -> new Date(timeout.fromNow.time.toMillis))
         )))
         logger.trace(s"insertLocked $collection: $by creates and locks $doc")
     }
 
-    def ownedLockQueryCriteria(lock:DBObject)(implicit by:LockerIdentity) = MongoDBObject(
+    def ownedLockQueryCriteria(lock:BSONObject)(implicit by:LockerIdentity) = MongoDBObject(
         s"$subfield.lb" -> by.id, "_id" -> lock.get("_id"),
         s"$subfield.lu" -> MongoDBObject("$gt" -> new Date())
     )
 
-    def release(lock:DBObject, update:DBObject=null, delete:Boolean=false)(implicit by:LockerIdentity) {
+    def release(lock:BSONObject, update:BSONObject=null, delete:Boolean=false)(implicit by:LockerIdentity) {
         val u = MongoDBObject("$set" -> MongoDBObject(s"$subfield.lb" -> null, s"$subfield.lu" -> new Date(0)))
         (if(delete)
             collection.findAndRemove(ownedLockQueryCriteria(lock))
@@ -100,7 +116,7 @@ case class MongoLockingPool(
         logger.trace(s"release $collection: $by release ${lock._id} delete=$delete update=$update")
     }
 
-    def relock(lock:DBObject,timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity):DBObject = {
+    def relock(lock:BSONObject,timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity):BSONObject = {
         val result = collection.findAndModify(
             query= ownedLockQueryCriteria(lock),
             fields= MongoDBObject.empty,
@@ -114,10 +130,10 @@ case class MongoLockingPool(
         result
     }
 
-    def diagnoseFailure(lock:DBObject)(implicit by:LockerIdentity):String =
+    def diagnoseFailure(lock:BSONObject)(implicit by:LockerIdentity):String =
         collection.findOne(MongoDBObject("_id" -> lock.get("_id"))) match {
             case None => s"no lock found"
-            case Some(other) => other.getAs[DBObject](subfield) match {
+            case Some(other) => other.getAs[BSONObject](subfield) match {
                 case None => s"document found, but is unblessed"
                 case Some(blessing) => {
                     val lu:Option[Date] = blessing.getAs[Date]("lu")

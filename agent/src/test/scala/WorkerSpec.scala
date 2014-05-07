@@ -8,6 +8,7 @@ import org.scalatest.concurrent.Eventually
 import akka.actor.{ ActorSystem, Actor, ActorRef, Props, PoisonPill, ActorPath }
 import akka.testkit.{ TestKit, TestActorRef, ImplicitSender, CallingThreadDispatcher }
 
+import org.bson.BSONObject
 import com.mongodb.casbah.Imports._
 
 import scala.concurrent.duration._
@@ -24,8 +25,8 @@ case class RemoteControledContainer(name:String) extends Container {
     def collection = inner.collection
     def collectionName = inner.collectionName
     def dbName = inner.dbName
-    def pull(payloadMongo:MongoClient,loc:Location):Iterable[DBObject] = inner.pull(payloadMongo, loc)
-    def setValues(payloadMongo:MongoClient,location:Location,values:MongoDBObject) {
+    def pull(payloadMongo:MongoClient,loc:Location):Iterable[BSONObject] = inner.pull(payloadMongo, loc)
+    def setValues(payloadMongo:MongoClient,location:Location,values:BSONObject) {
         inner.setValues(payloadMongo, location, values)
     }
     def iterator(payloadMongo:MongoClient) = {

@@ -5,6 +5,8 @@ import org.bson.BSONObject
 import com.mongodb.casbah.Imports._
 
 import org.zoy.kali.extropy.{ Change, InsertChange, DeleteChange, ModifiersUpdateChange, FullBodyUpdateChange }
+import org.zoy.kali.extropy.mongoutils.BSONObjectConversions._
+
 
 object MessageParser {
     implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
@@ -98,7 +100,7 @@ case class OpUpdate( zero:Int, fullCollectionName:String, flags:Int,
                                 .putBytes(bsonEncoder.encode(selector))
                                 .putBytes(bsonEncoder.encode(update))
                                 .result
-    def asChanges = if(new MongoDBObject(update.asInstanceOf[DBObject]).keys.exists( _.startsWith("$")))
+    def asChanges = if(update.keys.exists( _.startsWith("$")))
         Iterable(ModifiersUpdateChange(fullCollectionName, selector, update))
     else
         Iterable(FullBodyUpdateChange(fullCollectionName, selector, update))
@@ -188,13 +190,13 @@ case class OpQuery( flags:Int, fullCollectionName:String, numberToSkip:Int, numb
     def isCommand = fullCollectionName.endsWith(".$cmd")
     def asChanges:Iterable[Change] = if(isCommand) {
         if(query.containsKey("findAndModify")) {
-            val update = query.asInstanceOf[DBObject].getAs[DBObject]("update").getOrElse(MongoDBObject.empty)
-            val selector = query.asInstanceOf[DBObject].getAs[DBObject]("query").get
-            val remove:Boolean = query.asInstanceOf[DBObject].getAs[Boolean]("remove").getOrElse(false)
-            val collection = fullCollectionName.split('.').head + "." + query.asInstanceOf[DBObject].getAs[String]("findAndModify").get
+            val update = query.getAs[BSONObject]("update").getOrElse(MongoDBObject.empty)
+            val selector = query.getAs[BSONObject]("query").get
+            val remove:Boolean = query.getAs[Boolean]("remove").getOrElse(false)
+            val collection = fullCollectionName.split('.').head + "." + query.getAs[String]("findAndModify").get
             if(remove)
                 Iterable(DeleteChange(collection, selector))
-            else if(new MongoDBObject(update.asInstanceOf[DBObject]).keys.exists( _.startsWith("$")))
+            else if(update.keys.exists( _.startsWith("$")))
                 Iterable(ModifiersUpdateChange(collection, selector, update))
             else
                 Iterable(FullBodyUpdateChange(collection, selector, update))

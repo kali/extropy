@@ -54,7 +54,7 @@ class AgentSpec extends TestKit(ActorSystem("agentspec"))
     }
 
     implicit override val patienceConfig =
-        PatienceConfig(timeout = scaled(Span(2, Seconds)), interval = scaled(Span(50, Millis)))
+        PatienceConfig(timeout = scaled(Span(12, Seconds)), interval = scaled(Span(500, Millis)))
 
     override def afterAll { TestKit.shutdownActorSystem(system) ; super.afterAll }
 

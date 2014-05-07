@@ -11,6 +11,8 @@ import scala.concurrent.duration._
 
 import mongoutils._
 
+import mongoutils.BSONObjectConversions._
+
 abstract sealed class Change {
     def writtenCollection:String
     def play(payloadMongo:MongoClient):WriteResult
@@ -20,17 +22,17 @@ abstract sealed class Change {
 }
 
 case class FullBodyUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change {
-    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).update(selector.asInstanceOf[DBObject],update.asInstanceOf[DBObject])
+    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).update(selector,update)
 }
 case class InsertChange(writtenCollection:String, document:BSONObject) extends Change {
-    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).insert(document.asInstanceOf[DBObject])
+    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).insert(document)
 }
 case class DeleteChange(writtenCollection:String, selector:BSONObject) extends Change {
-    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).remove(selector.asInstanceOf[DBObject])
+    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).remove(selector)
 }
 case class ModifiersUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change {
-    def impactedFields:Set[String] = update.asInstanceOf[DBObject].values.flatMap( _.asInstanceOf[DBObject].keys ).toSet
-    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).update(selector.asInstanceOf[DBObject], update.asInstanceOf[DBObject])
+    def impactedFields:Set[String] = update.values.flatMap( _.asInstanceOf[BSONObject].keys ).toSet
+    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).update(selector, update)
 }
 
 
@@ -55,19 +57,19 @@ case class MonitoredField(container:Container, field:String) {
     def monitor(op:Change):Set[Location] =
         if(container.collection == op.writtenCollection)
             op match {
-                case InsertChange(writtenCollection, document) => if(document.asInstanceOf[DBObject].containsField(field))
-                        Set(DocumentLocation(document.asInstanceOf[DBObject]))
+                case InsertChange(writtenCollection, document) => if(document.containsField(field))
+                        Set(DocumentLocation(document))
                     else
                         Set()
                 case DeleteChange(writtenCollection, selector) =>
-                    Set(SelectorLocation(selector.asInstanceOf[DBObject]).optimize)
+                    Set(SelectorLocation(selector).optimize)
                 case muc @ ModifiersUpdateChange(writtenCollection, selector, update) =>
                     if(muc.impactedFields.contains(field))
-                        Set(SelectorLocation(selector.asInstanceOf[DBObject]).optimize)
+                        Set(SelectorLocation(selector).optimize)
                     else
                         Set()
                 case FullBodyUpdateChange(writtenCollection, selector, update) =>
-                    Set(SelectorLocation(selector.asInstanceOf[DBObject]).optimize)
+                    Set(SelectorLocation(selector).optimize)
             }
         else
             Set()
@@ -128,9 +130,9 @@ abstract class Container {
     def collectionName:String
 
     def iterator(payloadMongo:MongoClient):Traversable[Location]
-    def pull(payloadMongo:MongoClient, loc:Location):Iterable[DBObject]
+    def pull(payloadMongo:MongoClient, loc:Location):Iterable[BSONObject]
 
-    def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject)
+    def setValues(payloadMongo:MongoClient, location:Location, values:BSONObject)
 
     def toLabel:String
 }
@@ -145,11 +147,11 @@ case class CollectionContainer(collectionFullName:String) extends Container {
         cursor.option |= com.mongodb.Bytes.QUERYOPTION_NOTIMEOUT
         cursor.toTraversable.map( DocumentLocation(_) )
     }
-    def pull(payloadMongo:MongoClient, loc:Location):Iterable[DBObject] = loc.expand(payloadMongo).flatMap { expanded =>
+    def pull(payloadMongo:MongoClient, loc:Location):Iterable[BSONObject] = loc.expand(payloadMongo).flatMap { expanded =>
         payloadMongo(dbName)(collectionName).find(expanded.asSelectorLocation.selector)
     }
 
-    def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {
+    def setValues(payloadMongo:MongoClient, location:Location, values:BSONObject) {
         if(!values.isEmpty) {
             payloadMongo(dbName)(collectionName).update(
                 location.asSelectorLocation.selector,
@@ -167,9 +169,9 @@ case class SubCollectionContainer(collectionFullName:String, arrayField:String) 
     val collectionName = collectionFullName.split('.').drop(1).mkString(".")
 
     def iterator(payloadMongo:MongoClient):Traversable[Location] = null
-    def pull(payloadMongo:MongoClient, loc:Location):Iterable[DBObject] = null
+    def pull(payloadMongo:MongoClient, loc:Location):Iterable[BSONObject] = null
     def collection:String = collectionFullName
-    def setValues(payloadMongo:MongoClient, location:Location, values:MongoDBObject) {}
+    def setValues(payloadMongo:MongoClient, location:Location, values:BSONObject) {}
     def toLabel = s"<i>$collectionFullName.$arrayField</i>"
 }
 
@@ -182,14 +184,14 @@ abstract class Location {
     def optimize:Location = this
     def snapshot(mongo:MongoClient):Iterable[Location] = Some(this)
 }
-case class DocumentLocation(dbo:DBObject) extends Location {
+case class DocumentLocation(dbo:BSONObject) extends Location {
     override def asIdLocation:IdLocation = IdLocation(dbo.getAs[AnyRef]("_id").get)
     override def asSelectorLocation:SelectorLocation = asIdLocation.asSelectorLocation
     def expand(extropy:MongoClient):Iterable[Location] = Some(this)
 }
-case class SelectorLocation(selector:DBObject) extends Location {
+case class SelectorLocation(selector:BSONObject) extends Location {
     def asIdLocationOption = if(selector.size == 1 && selector.keys.head == "_id" &&
-            !selector.values.head.isInstanceOf[DBObject] &&
+            !selector.values.head.isInstanceOf[BSONObject] &&
             !selector.values.head.isInstanceOf[java.util.regex.Pattern])
             Some(IdLocation(selector.values.head))
         else
@@ -269,14 +271,14 @@ case class ReverseKeyTie(reactionFieldName:String) extends Tie {
 // REACTION
 @Salat abstract class Reaction {
     def reactionFields:Set[String]
-    def process(data:Traversable[DBObject]):DBObject
+    def process(data:Traversable[BSONObject]):BSONObject
     def toLabel:String
 }
 
 case class CopyField(from:String, to:String)
 case class CopyFieldsReaction(fields:List[CopyField]) extends Reaction {
     val reactionFields:Set[String] = fields.map( _.from ).toSet
-    def process(data:Traversable[DBObject]) = data.headOption.map { doc =>
+    def process(data:Traversable[BSONObject]) = data.headOption.map { doc =>
         MongoDBObject(fields.map { pair => (pair.to, doc.getAs[AnyRef](pair.from)) })
     }.getOrElse(MongoDBObject.empty)
     def toLabel = "copy " + fields.map( f => "<i>%s</i> as <i>%s</i>".format(f.from, f.to) ).mkString(", ")
@@ -284,7 +286,7 @@ case class CopyFieldsReaction(fields:List[CopyField]) extends Reaction {
 
 case class CountReaction(field:String) extends Reaction {
     val reactionFields:Set[String] = Set()
-    def process(data:Traversable[DBObject]) = MongoDBObject(field -> data.size)
+    def process(data:Traversable[BSONObject]) = MongoDBObject(field -> data.size)
     def toLabel = s"count as <i>$field</i>"
 }
 
@@ -292,7 +294,7 @@ case class CountReaction(field:String) extends Reaction {
 
 case class StringNormalizationReaction(from:String, to:String) extends Reaction {
     val reactionFields:Set[String] = Set(from)
-    def process(data:Traversable[DBObject]) = Map(to -> (data.headOption match {
+    def process(data:Traversable[BSONObject]) = Map(to -> (data.headOption match {
         case Some(obj) => obj.get(from).toString.toLowerCase
         case None => null
     }))

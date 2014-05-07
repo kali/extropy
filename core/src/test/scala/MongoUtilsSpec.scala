@@ -9,6 +9,10 @@ import com.mongodb.casbah.Imports._
 
 import scala.concurrent.duration._
 
+import org.bson.BSONObject
+
+import BSONObjectConversions._
+
 class MongoUtilsSpec extends FlatSpec with ShouldMatchers {
     behavior of "MongoUtils"
 
@@ -49,25 +53,25 @@ class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAf
         mlp.bless("foo")
         var doc = collection.find(MongoDBObject("_id" -> "foo")).next.toMap
         doc should contain key(mlp.subfield)
-        doc.get(mlp.subfield) shouldBe a [DBObject]
-        doc.get(mlp.subfield).asInstanceOf[DBObject].toMap should contain key("lb")
+        doc.get(mlp.subfield) shouldBe a [BSONObject]
+        doc.get(mlp.subfield).asInstanceOf[BSONObject].toMap should contain key("lb")
 
         collection.update(MongoDBObject("_id" -> "foo"),
             MongoDBObject("$set" -> MongoDBObject(mlp.subfield->MongoDBObject.empty)))
         doc = collection.find(MongoDBObject("_id" -> "foo")).next.toMap
-        doc.get(mlp.subfield).asInstanceOf[DBObject].toMap should not contain key("lb")
+        doc.get(mlp.subfield).asInstanceOf[BSONObject].toMap should not contain key("lb")
 
         mlp.bless("foo")
         doc = collection.find(MongoDBObject("_id" -> "foo")).next.toMap
-        doc.get(mlp.subfield).asInstanceOf[DBObject].toMap should not contain key("lb")
+        doc.get(mlp.subfield).asInstanceOf[BSONObject].toMap should not contain key("lb")
     }
 
     it should "allow blessing at insertion" in {
         collection.insert(MongoDBObject("_id" -> "foo") ++ mlp.blessing)
         var doc = collection.find(MongoDBObject("_id" -> "foo")).next.toMap
         doc should contain key(mlp.subfield)
-        doc.get(mlp.subfield) shouldBe a [DBObject]
-        doc.get(mlp.subfield).asInstanceOf[DBObject].toMap should contain key("lb")
+        doc.get(mlp.subfield) shouldBe a [BSONObject]
+        doc.get(mlp.subfield).asInstanceOf[BSONObject].toMap should contain key("lb")
 
         collection.insert(mlp.blessed(MongoDBObject("_id" -> "bar")))
         doc = collection.find(MongoDBObject("_id" -> "bar")).next.toMap
@@ -78,8 +82,8 @@ class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAf
         mlp.insertLocked(MongoDBObject("_id" -> "foo"))
         var doc = collection.find(MongoDBObject("_id" -> "foo")).next.toMap
         doc should contain key(mlp.subfield)
-        doc.get(mlp.subfield) shouldBe a [DBObject]
-        doc.get(mlp.subfield).asInstanceOf[DBObject].toMap should contain key("lb")
+        doc.get(mlp.subfield) shouldBe a [BSONObject]
+        doc.get(mlp.subfield).asInstanceOf[BSONObject].toMap should contain key("lb")
 
         mlp.lockOne() should be('empty)
     }

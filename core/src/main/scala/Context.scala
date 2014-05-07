@@ -13,6 +13,8 @@ import scala.concurrent.duration._
 
 import mongoutils._
 
+import BSONObjectConversions._
+
 trait BaseExtropyContext {
     val hostname = java.net.InetAddress.getLocalHost.getHostName
 
