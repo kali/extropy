@@ -36,6 +36,13 @@ class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLik
         extropy.agentDAO.collection.findOne(MongoDBObject.empty).get.getAs[Long]("configurationVersion").get should be(next)
     }
 
+    it should "deal with various inserts" in withProxiedClient { (extropy, blog, client) =>
+        import blog._
+        client(dbName)("posts").insert(post1)
+        client(dbName)("posts").size should be(1)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+    }
+
     implicit override val patienceConfig =
         PatienceConfig(timeout = scaled(Span(3, Seconds)), interval = scaled(Span(100, Millis)))
 
