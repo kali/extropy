@@ -68,5 +68,4 @@ case class BlogFixtures(dbName:String) {
     // some delete
     val deleteUserLiz = DeleteChange(s"$dbName.users", MongoDBObject("_id" -> "liz"))
     val deletePost1 = DeleteChange(s"$dbName.posts", MongoDBObject("_id" -> "post1"))
-
 }

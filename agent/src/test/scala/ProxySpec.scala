@@ -15,13 +15,11 @@ import com.mongodb.casbah.Imports._
 import akka.testkit.{ TestKit, TestActor }
 
 class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLike
-        with MongodbTemporary with ShouldMatchers with Eventually {
-
-    import fixture._
+        with ExtropyFixtures with ShouldMatchers with Eventually {
 
     behavior of "An extropy proxy"
 
-    it should "propagate and acknowledge configuration bumps" in withProxiedClient { (extropy, mongoClient) =>
+    it should "propagate and acknowledge configuration bumps" in withProxiedClient { (extropy, blog, mongoClient) =>
         val db = mongoClient("test")
         val initial = extropy.agentDAO.bumpConfigurationVersion
         eventually {
@@ -41,34 +39,31 @@ class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLik
     implicit override val patienceConfig =
         PatienceConfig(timeout = scaled(Span(3, Seconds)), interval = scaled(Span(100, Millis)))
 
-    def withProxiedClient(testCode:(BaseExtropyContext, MongoClient) => Any) {
-        val id = System.currentTimeMillis.toString
-        val dbName = s"extropy-spec-$id"
-        val extropy = ExtropyContext(mongoBackendClient(dbName), mongoBackendClient)
+    def withProxiedClient(testCode:(BaseExtropyContext, BlogFixtures, MongoClient) => Any) {
+        withExtropyAndBlog { (extropy,blog) =>
+            val port = de.flapdoodle.embed.process.runtime.Network.getFreeServerPort
+            val proxy = system.actorOf(ProxyServer.props(
+                extropy,
+                new InetSocketAddress("127.0.0.1", port),
+                new InetSocketAddress("127.0.0.1", mongoBackendPort)
+            ), "proxy")
 
-        val port = de.flapdoodle.embed.process.runtime.Network.getFreeServerPort
+            (1 to 30).find { i =>
+                try {
+                    Thread.sleep(100)
+                    new java.net.Socket("127.0.0.1", port)
+                    true
+                } catch { case e:Throwable => false }
+            }
 
-        val proxy = system.actorOf(ProxyServer.props(
-            extropy,
-            new InetSocketAddress("127.0.0.1", port),
-            new InetSocketAddress("127.0.0.1", mongoBackendPort)
-        ), "proxy")
-
-        (1 to 30).find { i =>
+            val mongoClient = MongoClient("127.0.0.1", port)
             try {
-                Thread.sleep(100)
-                new java.net.Socket("127.0.0.1", port)
-                true
-            } catch { case e:Throwable => false }
-        }
-
-        val mongoClient = MongoClient("127.0.0.1", port)
-        try {
-            testCode(extropy, mongoClient)
-        } finally {
-            proxy ! PoisonPill
+                testCode(extropy, blog, mongoClient)
+            } finally {
+                proxy ! PoisonPill
+            }
         }
     }
 
-    override def afterAll { TestKit.shutdownActorSystem(system) ; Thread.sleep(500); super.afterAll }
+    override def afterAll { TestKit.shutdownActorSystem(system) ; super.afterAll }
 }

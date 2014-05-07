@@ -43,18 +43,18 @@ object RemoteControledSyncRule {
 }
 
 class WorkerSpec extends TestKit(ActorSystem("workerspec"))
-    with FlatSpecLike with ShouldMatchers with MongodbTemporary with Eventually {
+    with FlatSpecLike with ShouldMatchers with ExtropyFixtures with Eventually {
 
     behavior of "An overseer"
 
-    it should "manifest itelf as an agent" in withExtropy { (extropy,blog) =>
+    it should "manifest itelf as an agent" in withExtropyAndBlog { (extropy,blog) =>
         val name = "overseer-" + System.currentTimeMillis
         extropy.agentDAO.collection.size should be(0)
         val overseer = system.actorOf(Overseer.props(extropy, name), name)
         eventually { extropy.agentDAO.collection.size should be(1) }
     }
 
-    it should "start foremen to handle all invariants" in withExtropy { (extropy,blog) =>
+    it should "start foremen to handle all invariants" in withExtropyAndBlog { (extropy,blog) =>
         val name = "overseer-" + blog.dbName
         val overseer = system.actorOf(Overseer.props(extropy, name), name)
         extropy.invariantDAO.collection.size should be >(0)
@@ -69,7 +69,7 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
 
     behavior of "A foreman"
 
-    it should "maintain its claim on an invariant" in withExtropy { (extropy,blog) =>
+    it should "maintain its claim on an invariant" in withExtropyAndBlog { (extropy,blog) =>
         val invariant = Invariant(RemoteControledSyncRule("foo.bar"))
         extropy.invariantDAO.salat.save(invariant)
         implicit val _locker = LockerIdentity(blog.dbName)
@@ -83,7 +83,7 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         }
     }
 
-    it should "switch its invariant from Created to Sync" in withExtropy { (extropy,blog) =>
+    it should "switch its invariant from Created to Sync" in withExtropyAndBlog { (extropy,blog) =>
         val invariant = Invariant(RemoteControledSyncRule("foo.baz"))
         extropy.invariantDAO.salat.save(invariant)
         implicit val _locker = LockerIdentity(blog.dbName)
@@ -101,7 +101,7 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
 
     behavior of "A worker"
 
-    it should "bring an invariant from Created to Run, through Sync" in withExtropy { (extropy,blog) =>
+    it should "bring an invariant from Created to Run, through Sync" in withExtropyAndBlog { (extropy,blog) =>
         // don't actually use the blog fixture
         extropy.invariantDAO.salat.remove(MongoDBObject.empty)
         extropy.agentDAO.readConfigurationVersion should be(0)
@@ -156,21 +156,8 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
 
     // paraphernalia
 
-    val databasesToDiscard = scala.collection.mutable.Buffer[String]()
-    def withExtropy(testCode:((BaseExtropyContext,BlogFixtures) => Any)) {
-        val now = System.currentTimeMillis
-        val payloadDbName = s"extropy-spec-payload-$now"
-        val extropyDbName = s"extropy-spec-internal-$now"
-        databasesToDiscard.append( payloadDbName, extropyDbName )
-        val fixture = BlogFixtures(payloadDbName)
-        val extropy = ExtropyContext(mongoBackendClient(extropyDbName), mongoBackendClient)
-        fixture.allRules.foreach( rule => extropy.invariantDAO.salat.insert( Invariant(rule) ) )
-        testCode(extropy, fixture)
-    }
-
     override def afterAll {
         TestKit.shutdownActorSystem(system)
-        databasesToDiscard.foreach( mongoBackendClient.dropDatabase(_) )
         super.afterAll
     }
 

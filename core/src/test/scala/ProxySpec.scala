@@ -9,26 +9,11 @@ import org.zoy.kali.extropy._
 
 import com.mongodb.casbah.Imports._
 
-class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with MongodbTemporary {
-
-    def withExtropy(testCode:((BaseExtropyContext,BlogFixtures) => Any)) {
-        val now = System.currentTimeMillis
-        val payloadDbName = s"extropy-spec-payload-$now"
-        val extropyDbName = s"extropy-spec-internal-$now"
-        val fixture = BlogFixtures(payloadDbName)
-        val extropy = ExtropyContext(mongoBackendClient(extropyDbName), mongoBackendClient)
-        fixture.allRules.foreach( rule => extropy.invariantDAO.salat.insert( Invariant(rule) ) )
-        try {
-            testCode(extropy, fixture)
-        } finally {
-            mongoBackendClient.dropDatabase(payloadDbName)
-            mongoBackendClient.dropDatabase(extropyDbName)
-        }
-    }
+class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with ExtropyFixtures {
 
     behavior of "A synchronous proxy"
 
-    it should "deal with various inserts" in withExtropy { (extropy, fixture) =>
+    it should "deal with various inserts" in withExtropyAndBlog { (extropy, fixture) =>
         val proxy = SyncProxy(extropy)
         import fixture._
         Seq(insertPost1,insertPost2,insertUserLiz,insertUserJack).permutations.foreach { perm =>
@@ -41,7 +26,7 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
         }
     }
 
-    it should "deal with updates" in withExtropy { (extropy, fixture) =>
+    it should "deal with updates" in withExtropyAndBlog { (extropy, fixture) =>
         val proxy = SyncProxy(extropy)
         import fixture._
         Array(insertUserJack, insertUserLiz, insertUserCatLady, insertPost1, insertPost2).foreach( proxy.doChange(_) )
@@ -60,7 +45,7 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
         allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
     }
 
-    it should "deal with deletes" in withExtropy { (extropy, fixture) =>
+    it should "deal with deletes" in withExtropyAndBlog { (extropy, fixture) =>
         val proxy = SyncProxy(extropy)
         import fixture._
         Array(insertUserJack, insertUserLiz, insertUserCatLady, insertPost1, insertPost2).foreach( proxy.doChange(_) )
@@ -70,7 +55,7 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
         allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
     }
 
-    it should "leave messages on an arbitrary collection alone" in withExtropy { (extropy,id) =>
+    it should "leave messages on an arbitrary collection alone" in withExtropyAndBlog { (extropy,id) =>
         pending
 /*
         val proxy = ExtropyProxy(extropy)
@@ -80,7 +65,7 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
 */
     }
 
-    it should "transform messages on the right collection" in withExtropy { (extropy,id) =>
+    it should "transform messages on the right collection" in withExtropyAndBlog { (extropy,id) =>
         pending
 /*
         val proxy = ExtropyProxy(extropy)
