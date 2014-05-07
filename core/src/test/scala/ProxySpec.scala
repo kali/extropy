@@ -31,17 +31,12 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
     it should "deal with various inserts" in withExtropy { (extropy, fixture) =>
         val proxy = SyncProxy(extropy)
         import fixture._
-        Seq(    Seq(insertPost1,insertPost2,insertUserLiz,insertUserJack),
-                Seq(insertPost1,insertPost2,insertUsers),
-                Seq(insertPosts,insertUsers)
-        ).foreach { ops =>
-            ops.permutations.foreach { perm =>
-                Seq("users", "posts").foreach( extropy.payloadMongo(dbName)(_).remove(MongoDBObject.empty) )
-                extropy.payloadMongo(dbName)("users").remove(MongoDBObject.empty)
-                perm.foreach { op =>
-                    proxy.doChange(op)
-                    allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
-                }
+        Seq(insertPost1,insertPost2,insertUserLiz,insertUserJack).permutations.foreach { perm =>
+            Seq("users", "posts").foreach( extropy.payloadMongo(dbName)(_).remove(MongoDBObject.empty) )
+            extropy.payloadMongo(dbName)("users").remove(MongoDBObject.empty)
+            perm.foreach { op =>
+                proxy.doChange(op)
+                allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
             }
         }
     }
@@ -49,8 +44,7 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
     it should "deal with updates" in withExtropy { (extropy, fixture) =>
         val proxy = SyncProxy(extropy)
         import fixture._
-        proxy.doChange(insertUsers)
-        proxy.doChange(insertPosts)
+        Array(insertUserJack, insertUserLiz, insertUserCatLady, insertPost1, insertPost2).foreach( proxy.doChange(_) )
         allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
         proxy.doChange(setNameOnUserLiz)
         allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
@@ -69,8 +63,7 @@ class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with
     it should "deal with deletes" in withExtropy { (extropy, fixture) =>
         val proxy = SyncProxy(extropy)
         import fixture._
-        proxy.doChange(insertUsers)
-        proxy.doChange(insertPosts)
+        Array(insertUserJack, insertUserLiz, insertUserCatLady, insertPost1, insertPost2).foreach( proxy.doChange(_) )
         proxy.doChange(deletePost1)
         allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
         proxy.doChange(deleteUserLiz)

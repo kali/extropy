@@ -44,13 +44,12 @@ case class BlogFixtures(dbName:String) {
                     "comments" -> MongoDBList(MongoDBObject("authorId" -> "jack")))
 
     // some inserts
-    val insertUserLiz = InsertChange(s"$dbName.users", Stream( userLiz ))
-    val insertUserJack = InsertChange(s"$dbName.users", Stream( userJack ))
-    val insertUsers = InsertChange(s"$dbName.users", Stream( userLiz, userJack, userCatLady ))
-    val insertNotUsers = InsertChange(s"$dbName.not-user", Stream( userLiz, userCatLady ))
-    val insertPost1 = InsertChange(s"$dbName.posts", Stream( post1 ))
-    val insertPost2 = InsertChange(s"$dbName.posts", Stream( post2 ))
-    val insertPosts = InsertChange(s"$dbName.posts", Stream( post1, post2 ))
+    val insertUserLiz = InsertChange(s"$dbName.users", userLiz)
+    val insertUserJack = InsertChange(s"$dbName.users", userJack)
+    val insertUserCatLady = InsertChange(s"$dbName.users", userCatLady)
+    val insertNotUsers = InsertChange(s"$dbName.not-user", userLiz)
+    val insertPost1 = InsertChange(s"$dbName.posts", post1)
+    val insertPost2 = InsertChange(s"$dbName.posts", post2)
 
     // some modifiers updates
     val setNameOnUserLiz = ModifiersUpdateChange(s"$dbName.users", MongoDBObject("_id" -> "liz"),

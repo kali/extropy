@@ -121,23 +121,23 @@ class MessageParserSpec extends FlatSpec with ShouldMatchers {
     behavior of "Mongo message change detector"
 
     it should "identify change in a op insert" in {
-        OpInsert(12, "foo.bar", Stream(MongoDBObject("a" -> 12))).asChange should be(
-            InsertChange("foo.bar", Stream(MongoDBObject("a" -> 12)))
+        OpInsert(12, "foo.bar", Stream(MongoDBObject("a" -> 12))).asChanges should be(
+            Iterable(InsertChange("foo.bar", MongoDBObject("a" -> 12)))
         )
     }
 
     it should "identify change in a op delete" in {
-        OpDelete(0, "foo.bar", 12, MongoDBObject("a" -> 12)).asChange should be(
-            DeleteChange("foo.bar", MongoDBObject("a" -> 12))
+        OpDelete(0, "foo.bar", 12, MongoDBObject("a" -> 12)).asChanges should be(
+            Iterable(DeleteChange("foo.bar", MongoDBObject("a" -> 12)))
         )
     }
 
     it should "identify change in both kinds of op update" in {
-        OpUpdate(0, "foo.bar", 12, MongoDBObject("a" -> 12), MongoDBObject("b" -> 42)).asChange should be(
-            FullBodyUpdateChange("foo.bar", MongoDBObject("a" -> 12), MongoDBObject("b" -> 42))
+        OpUpdate(0, "foo.bar", 12, MongoDBObject("a" -> 12), MongoDBObject("b" -> 42)).asChanges should be(
+            Iterable(FullBodyUpdateChange("foo.bar", MongoDBObject("a" -> 12), MongoDBObject("b" -> 42)))
         )
-        OpUpdate(0, "foo.bar", 12, MongoDBObject("a" -> 12), MongoDBObject("$set" -> MongoDBObject("b" -> 42))).asChange should be(
-            ModifiersUpdateChange("foo.bar", MongoDBObject("a" -> 12), MongoDBObject("$set" -> MongoDBObject("b" -> 42)))
+        OpUpdate(0, "foo.bar", 12, MongoDBObject("a" -> 12), MongoDBObject("$set" -> MongoDBObject("b" -> 42))).asChanges should be(
+            Iterable(ModifiersUpdateChange("foo.bar", MongoDBObject("a" -> 12), MongoDBObject("$set" -> MongoDBObject("b" -> 42))))
         )
     }
 
@@ -145,8 +145,8 @@ class MessageParserSpec extends FlatSpec with ShouldMatchers {
         OpQuery(12, "foo.$cmd", 0, 0, MongoDBObject(
             "findAndModify" -> "bar",
             "query" -> MongoDBObject("a" -> 12),
-            "update" -> MongoDBObject("b" -> 42)), None).asChange should be(
-            FullBodyUpdateChange("foo.bar", MongoDBObject("a" -> 12), MongoDBObject("b" -> 42))
+            "update" -> MongoDBObject("b" -> 42)), None).asChanges should be(
+            Iterable(FullBodyUpdateChange("foo.bar", MongoDBObject("a" -> 12), MongoDBObject("b" -> 42)))
         )
     }
 
@@ -154,8 +154,8 @@ class MessageParserSpec extends FlatSpec with ShouldMatchers {
         OpQuery(12, "foo.$cmd", 0, 0, MongoDBObject(
             "findAndModify" -> "bar",
             "query" -> MongoDBObject("a" -> 12),
-            "update" -> MongoDBObject("$set" -> MongoDBObject("b" -> 42))), None).asChange should be(
-            ModifiersUpdateChange("foo.bar", MongoDBObject("a" -> 12), MongoDBObject("$set" -> MongoDBObject("b" -> 42)))
+            "update" -> MongoDBObject("$set" -> MongoDBObject("b" -> 42))), None).asChanges should be(
+            Iterable(ModifiersUpdateChange("foo.bar", MongoDBObject("a" -> 12), MongoDBObject("$set" -> MongoDBObject("b" -> 42))))
         )
     }
 
@@ -163,8 +163,8 @@ class MessageParserSpec extends FlatSpec with ShouldMatchers {
         OpQuery(12, "foo.$cmd", 0, 0, MongoDBObject(
             "findAndModify" -> "bar",
             "query" -> MongoDBObject("a" -> 12),
-            "remove" -> true), None).asChange should be (
-                DeleteChange("foo.bar", MongoDBObject("a" -> 12))
+            "remove" -> true), None).asChanges should be (
+                Iterable(DeleteChange("foo.bar", MongoDBObject("a" -> 12)))
         )
     }
 }

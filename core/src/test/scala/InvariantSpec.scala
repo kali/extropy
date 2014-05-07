@@ -43,16 +43,15 @@ class InvariantSpec extends FlatSpec with ShouldMatchers {
     }
 
     it should "monitor inserts" in {
-        monitorUsersName.monitor(insertUsers) should be( Set(DocumentLocation(userLiz),DocumentLocation(userJack)) )
-        monitorPostsTitle.monitor(insertUsers) should be ( 'empty )
-        monitorPostsAuthorId.monitor(insertUsers) should be ( 'empty )
-        monitorPostsCommentsAuthorId.monitor(insertUsers) should be ( 'empty )
+        monitorUsersName.monitor(insertUserLiz) should be( Set(DocumentLocation(userLiz)) )
+        monitorPostsTitle.monitor(insertUserLiz) should be ( 'empty )
+        monitorPostsAuthorId.monitor(insertUserLiz) should be ( 'empty )
+        monitorPostsCommentsAuthorId.monitor(insertUserLiz) should be ( 'empty )
 
-        monitorUsersName.monitor(insertPosts) should be( 'empty )
-        monitorPostsTitle.monitor(insertPosts) should be ( Set(DocumentLocation(post1), DocumentLocation(post2)) )
-        monitorPostsAuthorId.monitor(insertPosts) should be ( Set(DocumentLocation(post1), DocumentLocation(post2)) )
-        //monitorPostsCommentsAuthorId.monitor(insertPosts) should be ( Set(DocumentLocation(post2)) ) // FIXME
-        monitorPostsCommentsAuthorId.monitor(insertPosts) should be ( Set(DocumentLocation(post1), DocumentLocation(post2)) )
+        monitorUsersName.monitor(insertPost1) should be( 'empty )
+        monitorPostsTitle.monitor(insertPost1) should be ( Set(DocumentLocation(post1)) )
+        monitorPostsAuthorId.monitor(insertPost1) should be ( Set(DocumentLocation(post1)) )
+        monitorPostsCommentsAuthorId.monitor(insertPost1) should be ( Set(DocumentLocation(post1)) )
 
         monitorUsersName.monitor(insertNotUsers) should be( 'empty )
     }
@@ -97,10 +96,8 @@ class InvariantSpec extends FlatSpec with ShouldMatchers {
 
     it should "identify dirty set for inserts" in {
         searchableTitleRule.dirtiedSet( insertUserLiz ) should be ( 'empty )
-        searchableTitleRule.dirtiedSet( insertUsers ) should be ( 'empty )
         searchableTitleRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
         searchableTitleRule.dirtiedSet( insertPost1 ) should be ( Set(DocumentLocation(post1)) )
-        searchableTitleRule.dirtiedSet( insertPosts ) should be ( Set(DocumentLocation(post1),DocumentLocation(post2)) )
     }
 
     it should "identify dirty set for modifiers updates" in {
@@ -124,11 +121,8 @@ class InvariantSpec extends FlatSpec with ShouldMatchers {
 
     it should "identify dirty set for inserts" in {
         authorNameInPostRule.dirtiedSet( insertUserLiz ) should be ( Set(SelectorLocation(MongoDBObject("authorId" -> "liz"))) )
-        authorNameInPostRule.dirtiedSet( insertUsers ) should be ( Set( SelectorLocation(MongoDBObject("authorId" -> "liz")),
-                                                                        SelectorLocation(MongoDBObject("authorId" -> "jack"))))
         authorNameInPostRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
         authorNameInPostRule.dirtiedSet( insertPost1 ) should be ( Set(DocumentLocation(post1)) )
-        authorNameInPostRule.dirtiedSet( insertPosts ) should be ( Set(DocumentLocation(post1),DocumentLocation(post2)) )
     }
 
     it should "identify dirty set for modifiers updates" in {
@@ -152,16 +146,10 @@ class InvariantSpec extends FlatSpec with ShouldMatchers {
 
     it should "identify dirty set for inserts" in {
         postCountInUserRule.dirtiedSet( insertUserLiz ) should be ( Set(DocumentLocation(userLiz)) )
-        postCountInUserRule.dirtiedSet( insertUsers ) should be ( Set(DocumentLocation(userLiz), DocumentLocation(userJack), DocumentLocation(userCatLady)))
         postCountInUserRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
         postCountInUserRule.dirtiedSet( insertPost1 ) should be ( Set(
             QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId"),
             SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId") ) ) )
-        postCountInUserRule.dirtiedSet( insertPosts ) should be ( Set(
-            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId"),
-            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId")),
-            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post2"), "authorId"),
-            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post2"), "authorId"))  ) )
     }
 
     it should "identify dirty set for modifiers updates" in {

@@ -33,7 +33,7 @@ sealed abstract class Message {
     def header:MsgHeader
     def op:Op
 
-    def isChange:Boolean = op.asChange != null
+    def isChange:Boolean = !op.asChanges.isEmpty
     def isCommand:Boolean = op match {
         case q:OpQuery => q.isCommand
         case _ => false
@@ -72,8 +72,8 @@ object MsgHeader {
 abstract sealed class Op {
     def binary:ByteString
     def opcode:Int
-    def asChange:Change
-    def adoptChange(change:Change):Op = throw new NotImplementedError(s"Attempting to adopt $change in $this")
+    def asChanges:Iterable[Change]
+//    def adoptChange(change:Change):Op = throw new NotImplementedError(s"Attempting to adopt $change in $this")
     def isExtropyCommand:Boolean = false
 }
 
@@ -98,16 +98,18 @@ case class OpUpdate( zero:Int, fullCollectionName:String, flags:Int,
                                 .putBytes(bsonEncoder.encode(selector))
                                 .putBytes(bsonEncoder.encode(update))
                                 .result
-    def asChange = if(new MongoDBObject(update.asInstanceOf[DBObject]).keys.exists( _.startsWith("$")))
-        ModifiersUpdateChange(fullCollectionName, selector, update)
+    def asChanges = if(new MongoDBObject(update.asInstanceOf[DBObject]).keys.exists( _.startsWith("$")))
+        Iterable(ModifiersUpdateChange(fullCollectionName, selector, update))
     else
-        FullBodyUpdateChange(fullCollectionName, selector, update)
+        Iterable(FullBodyUpdateChange(fullCollectionName, selector, update))
 
+/*
     override def adoptChange(change:Change) = change match {
         case fbu:FullBodyUpdateChange => copy(update=fbu.update)
         case mod:ModifiersUpdateChange => copy(update=mod.update)
         case _ => super.adoptChange(change)
     }
+*/
 }
 
 object OpUpdate {
@@ -137,11 +139,13 @@ case class OpInsert(flags:Int, fullCollectionName:String,
     }
     def writtenCollection = fullCollectionName
 
-    def asChange = InsertChange(fullCollectionName, documents)
+    def asChanges = documents.map(InsertChange(fullCollectionName, _)).toIterable
+/*
     override def adoptChange(change:Change) = change match {
         case other:InsertChange => copy(documents=other.documents)
         case _ => super.adoptChange(change)
     }
+*/
 }
 
 object OpInsert {
@@ -182,22 +186,22 @@ case class OpQuery( flags:Int, fullCollectionName:String, numberToSkip:Int, numb
     }
     override def isExtropyCommand = fullCollectionName.endsWith(".$extropy")
     def isCommand = fullCollectionName.endsWith(".$cmd")
-    def asChange:Change = if(isCommand) {
+    def asChanges:Iterable[Change] = if(isCommand) {
         if(query.containsKey("findAndModify")) {
             val update = query.asInstanceOf[DBObject].getAs[DBObject]("update").getOrElse(MongoDBObject.empty)
             val selector = query.asInstanceOf[DBObject].getAs[DBObject]("query").get
             val remove:Boolean = query.asInstanceOf[DBObject].getAs[Boolean]("remove").getOrElse(false)
             val collection = fullCollectionName.split('.').head + "." + query.asInstanceOf[DBObject].getAs[String]("findAndModify").get
             if(remove)
-                DeleteChange(collection, selector)
+                Iterable(DeleteChange(collection, selector))
             else if(new MongoDBObject(update.asInstanceOf[DBObject]).keys.exists( _.startsWith("$")))
-                ModifiersUpdateChange(collection, selector, update)
+                Iterable(ModifiersUpdateChange(collection, selector, update))
             else
-                FullBodyUpdateChange(collection, selector, update)
+                Iterable(FullBodyUpdateChange(collection, selector, update))
         } else
-            null
+            Iterable()
     } else
-        null
+        Iterable()
 }
 object OpQuery {
     def parse(it:ByteIterator):OpQuery = {
@@ -229,7 +233,7 @@ case class OpGetMore(   zero:Int, fullCollectionName:String,
                                 .putLong(cursorID)
                                 .result
     }
-    def asChange = null
+    def asChanges:Iterable[Change] = Iterable()
 }
 object OpGetMore {
     def parse(it:ByteIterator):OpGetMore = {
@@ -257,11 +261,13 @@ case class OpDelete(zero:Int, fullCollectionName:String, flags:Int, selector:BSO
                                 .result
     }
     def writtenCollection = fullCollectionName
-    def asChange = DeleteChange(fullCollectionName, selector)
+    def asChanges = Iterable(DeleteChange(fullCollectionName, selector))
+/*
     override def adoptChange(change:Change) = change match {
         case del:DeleteChange => copy(selector=del.selector)
         case _ => super.adoptChange(change)
     }
+*/
 }
 object OpDelete {
     def parse(it:ByteIterator):OpDelete = {
@@ -286,7 +292,7 @@ case class OpKillCursors(zero:Int, numberOfCursorIDs:Int, cursorIDs:Stream[Long]
         cursorIDs.foreach( c => bsb.putLong(c) )
         bsb.result
     }
-    def asChange = null
+    def asChanges = null
 }
 object OpKillCursors {
     def parse(it:ByteIterator):OpKillCursors = {
@@ -307,7 +313,7 @@ case class OpMsg(message:String) extends Op {
                                 .putBytes(message.getBytes("UTF-8")).putByte(0)
                                 .result
     }
-    def asChange = null
+    def asChanges = null
 }
 object OpMsg {
     def parse(it:ByteIterator):OpMsg = OpMsg(readCString(it))
@@ -335,7 +341,7 @@ case class OpReply( responseFlags:Int, cursorID:Long, startingFrom:Int, numberRe
         documents.foreach( doc => bsb.putBytes(bsonEncoder.encode(doc)) )
         bsb.result
     }
-    def asChange = null
+    def asChanges = Iterable[Change]()
 }
 object OpReply {
     def parse(it:ByteIterator):OpReply = {
@@ -351,6 +357,6 @@ object OpReply {
 case class OpReserved() extends Op {
     def opcode = 2003
     def binary:ByteString = ByteString.empty
-    def asChange = null
+    def asChanges = Iterable[Change]()
 }
 

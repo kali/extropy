@@ -25,7 +25,7 @@ class ExtropyProxyActor(    extropy:BaseExtropyContext,
     var logic = ExtropyProxyLogic(extropy, optionalConfiguration)
 
     var responseId:Int = 0
-    var processing:AnalysedChange = null
+    var processing:Iterable[AnalysedChange] = Iterable()
 
     def nextResponseId = { responseId+=1 ; responseId }
 
@@ -34,11 +34,9 @@ class ExtropyProxyActor(    extropy:BaseExtropyContext,
             logic = ExtropyProxyLogic(extropy, Some(c))
             sender ! AckDynamicConfiguration(logic.configuration)
         }
-        case msg@TargettedMessage(Client,_) => 
-            if(processing != null) {
-                logic.postChange(processing)
-                processing = null
-            }
+        case msg@TargettedMessage(Client,_) =>
+            processing.foreach( logic.postChange(_) )
+            processing = Iterable()
             sender ! msg
         case msg@TargettedMessage(Server, op) if(op.op.isExtropyCommand) => {
             sender ! TargettedMessage(Client,
@@ -47,14 +45,15 @@ class ExtropyProxyActor(    extropy:BaseExtropyContext,
         }
         case msg@TargettedMessage(Server,mongo) =>
             if(mongo.isChange) {
-                val originalChange:Change = mongo.op.asChange
-                processing = logic.preChange(originalChange)
+                processing = mongo.op.asChanges.map( logic.preChange( _ ) )
+/*
                 if(processing.alteredChange != originalChange)
                     sender ! TargettedMessage(Server,
                         CraftedMessage(mongo.header.requestId, mongo.header.responseTo,
                             mongo.op.adoptChange(processing.alteredChange))
                     )
                 else
+*/
                     sender ! msg
             } else
                 sender ! msg

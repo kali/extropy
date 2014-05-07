@@ -22,8 +22,8 @@ abstract sealed class Change {
 case class FullBodyUpdateChange(writtenCollection:String, selector:BSONObject, update:BSONObject) extends Change {
     def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).update(selector.asInstanceOf[DBObject],update.asInstanceOf[DBObject])
 }
-case class InsertChange(writtenCollection:String, documents:Stream[BSONObject]) extends Change {
-    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).insert(documents.toSeq.map( _.asInstanceOf[DBObject] ):_* )
+case class InsertChange(writtenCollection:String, document:BSONObject) extends Change {
+    def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).insert(document.asInstanceOf[DBObject])
 }
 case class DeleteChange(writtenCollection:String, selector:BSONObject) extends Change {
     def play(payloadMongo:MongoClient):WriteResult = payloadMongo(dbName)(collectionName).remove(selector.asInstanceOf[DBObject])
@@ -55,8 +55,10 @@ case class MonitoredField(container:Container, field:String) {
     def monitor(op:Change):Set[Location] =
         if(container.collection == op.writtenCollection)
             op match {
-                case InsertChange(writtenCollection, documents) => documents.filter( _.containsField(field) )
-                        .map( d => DocumentLocation(d.asInstanceOf[DBObject]) ).toSet
+                case InsertChange(writtenCollection, document) => if(document.asInstanceOf[DBObject].containsField(field))
+                        Set(DocumentLocation(document.asInstanceOf[DBObject]))
+                    else
+                        Set()
                 case DeleteChange(writtenCollection, selector) =>
                     Set(SelectorLocation(selector.asInstanceOf[DBObject]).optimize)
                 case muc @ ModifiersUpdateChange(writtenCollection, selector, update) =>
