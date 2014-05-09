@@ -13,7 +13,9 @@ import akka.actor.{ ActorSystem, Actor, ActorRef, Props, PoisonPill }
 import com.mongodb.casbah.Imports._
 import akka.testkit.{ TestKit, TestActor }
 
-class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLike
+import de.flapdoodle.embed.mongo.distribution.{ IFeatureAwareVersion, Version }
+
+abstract class BaseProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLike
         with ExtropyFixtures with Matchers with Eventually {
 
     behavior of "An extropy proxy"
@@ -35,7 +37,7 @@ class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLik
         extropy.agentDAO.collection.findOne(MongoDBObject.empty).get.getAs[Long]("configurationVersion").get should be(next)
     }
 
-    it should "deal with various inserts" in withProxiedClient { (extropy, blog, client) =>
+    it should "deal with various inserts" taggedAs(Tag("blah")) in withProxiedClient { (extropy, blog, client) =>
         import blog._
         client(dbName)("posts").insert(post1)
         client(dbName)("posts").size should be(1)
@@ -72,4 +74,12 @@ class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLik
     }
 
     override def afterAll { TestKit.shutdownActorSystem(system) ; super.afterAll }
+}
+
+class Proto2_4 extends BaseProxyServerSpec {
+    override def mongoWantedVersion = Some(Version.Main.V2_4)
+}
+
+class Proto2_6 extends BaseProxyServerSpec {
+    override def mongoWantedVersion = Some(Version.Main.V2_6)
 }

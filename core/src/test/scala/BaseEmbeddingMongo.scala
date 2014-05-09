@@ -6,7 +6,7 @@ import de.flapdoodle.embed.mongo.{ MongodExecutable, MongodProcess, MongodStarte
 import de.flapdoodle.embed.process.runtime._
 import de.flapdoodle.embed.process.config.io.ProcessOutput
 import de.flapdoodle.embed.mongo.config._
-import de.flapdoodle.embed.mongo.distribution.Version;
+import de.flapdoodle.embed.mongo.distribution.{ IFeatureAwareVersion, Version }
 
 import com.mongodb.casbah.Imports._
 
@@ -17,9 +17,11 @@ trait MongodbTemporary extends BeforeAndAfterAll { this: Suite =>
     var mongoBackendClient:MongoClient = null
     var mongoBackendPort:Int = 0
 
+    def mongoWantedVersion:Option[IFeatureAwareVersion] = None
+
     override def beforeAll() {
         System.getenv("MONGO_FOR_TEST") match {
-            case a:String => mongoBackendPort = a.split(":").last.toInt
+            case a:String if(mongoWantedVersion.isEmpty) => mongoBackendPort = a.split(":").last.toInt
             case null =>
                 val runtimeConfig = new RuntimeConfigBuilder()
                                         .defaults(Command.MongoD)
@@ -29,7 +31,7 @@ trait MongodbTemporary extends BeforeAndAfterAll { this: Suite =>
                 mongoBackendPort = Network.getFreeServerPort
                 val config = new MongodConfigBuilder()
                                 .net(new Net(mongoBackendPort, false))
-                                .version(Version.Main.PRODUCTION)
+                                .version(mongoWantedVersion.getOrElse(Version.Main.PRODUCTION))
                                 .build
                 mongoExecutable = runtime.prepare(config)
                 mongoProcess = mongoExecutable.start
