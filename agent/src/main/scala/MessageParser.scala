@@ -189,7 +189,7 @@ case class OpQuery( flags:Int, fullCollectionName:String, numberToSkip:Int, numb
     override def isExtropyCommand = fullCollectionName.endsWith(".$extropy")
     def isCommand = fullCollectionName.endsWith(".$cmd")
     def asChanges:Iterable[Change] = if(isCommand) {
-        if(query.containsKey("findAndModify")) {
+        if(query.contains("findAndModify")) {
             val update = query.getAs[BSONObject]("update").getOrElse(MongoDBObject.empty)
             val selector = query.getAs[BSONObject]("query").get
             val remove:Boolean = query.getAs[Boolean]("remove").getOrElse(false)

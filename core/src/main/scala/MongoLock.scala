@@ -11,6 +11,7 @@ import com.typesafe.scalalogging.slf4j.StrictLogging
 import org.bson.BSONObject
 
 object BSONObjectConversions {
+    import scala.language.implicitConversions
     implicit def bsonObject2dbObject(bson:BSONObject):DBObject = bson match {
         case dbo:DBObject => dbo
         case bson => new BasicDBObject(bson.toMap)

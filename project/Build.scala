@@ -11,6 +11,7 @@ object ExtropyBuildSettings {
         scalaVersion := "2.10.3",
         resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
         unmanagedSourceDirectories in Test += file("core/src/fixture/scala"),
+        scalacOptions ++= Seq("-Xfatal-warnings",  "-deprecation", "-feature"),
         libraryDependencies ++= Seq(
             "ch.qos.logback" % "logback-classic" % "1.0.13",
 //            "org.mongodb" % "casbah-core_2.10" % "2.6.5",

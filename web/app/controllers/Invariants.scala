@@ -20,7 +20,7 @@ object Invariants extends Controller {
     }
 
     def command(id:ObjectId, command:String) = Action {
-        val inv = InvariantPlay.findOneByID(id).get
+        val inv = InvariantPlay.findOneById(id).get
         InvariantPlay.command(inv, InvariantStatus.withName(command))
         Ok
     }

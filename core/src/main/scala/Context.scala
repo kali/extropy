@@ -18,11 +18,11 @@ import BSONObjectConversions._
 trait BaseExtropyContext {
     val hostname = java.net.InetAddress.getLocalHost.getHostName
 
-    def agentHeartBeat = 1 second
-    def agentLockDuration = 1 minute
+    def agentHeartBeat = 1.second
+    def agentLockDuration = 1.minute
 
-    def overseerHeartBeat = 1 second
-    def foremanHeartBeat = 1 second
+    def overseerHeartBeat = 1.second
+    def foremanHeartBeat = 1.second
     def invariantLockDuration = foremanHeartBeat * 10
 
     def agentDAO:ExtropyAgentDescriptionDAO

@@ -1,7 +1,6 @@
 package org.zoy.kali.extropy.mongoutils
 
 import org.scalatest._
-import org.scalatest.matchers.ShouldMatchers
 
 import org.zoy.kali.extropy.MongodbTemporary
 
@@ -13,11 +12,11 @@ import org.bson.BSONObject
 
 import BSONObjectConversions._
 
-class MongoUtilsSpec extends FlatSpec with ShouldMatchers {
+class MongoUtilsSpec extends FlatSpec with Matchers {
     behavior of "MongoUtils"
 
     val (x,y,z,t) = ("x","y","z","t")
-    implicit def m[A <: String, B] (elems: (A, B)*) : DBObject = MongoDBObject(elems:_*)
+    def m[A <: String, B] (elems: (A, B)*) : DBObject = MongoDBObject(elems:_*)
     import MongoUtils.recursiveMerge
     it should "merge first level of DBObject" in {
         recursiveMerge(m(x->m(x->x))) should be (m(x->m(x->x)))
@@ -33,7 +32,7 @@ class MongoUtilsSpec extends FlatSpec with ShouldMatchers {
     }
 }
 
-class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with BeforeAndAfterEach
+class MongoLockingPoolSpec extends FlatSpec with Matchers with BeforeAndAfterAll with BeforeAndAfterEach
     with MongodbTemporary {
     behavior of "A mongo locking pool"
 
@@ -43,7 +42,7 @@ class MongoLockingPoolSpec extends FlatSpec with ShouldMatchers with BeforeAndAf
         super.beforeEach
         collection = mongoBackendClient("test")("mongo_locking_pool_test")
         collection.drop
-        mlp = MongoLockingPool(collection, defaultTimeout=100 milliseconds)
+        mlp = MongoLockingPool(collection, defaultTimeout=100.milliseconds)
     }
 
     implicit val _lockerId:LockerIdentity = LockerIdentity("me")

@@ -3,7 +3,6 @@ package org.zoy.kali.extropy
 import org.scalatest._
 import org.scalatest.concurrent.Eventually
 import org.scalatest.time._
-import org.scalatest.matchers.ShouldMatchers
 
 import akka.actor.{ ActorSystem, Actor, ActorRef, Props, PoisonPill }
 import akka.testkit.{ TestKit, TestActor, TestActorRef, ImplicitSender, CallingThreadDispatcher }
@@ -13,7 +12,7 @@ import com.mongodb.casbah.Imports._
 import scala.concurrent.duration._
 
 class AgentSpec extends TestKit(ActorSystem("agentspec"))
-        with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll with ExtropyFixtures with Eventually {
+        with FlatSpecLike with Matchers with BeforeAndAfterAll with ExtropyFixtures with Eventually {
 
     behavior of "An extropy agent"
 

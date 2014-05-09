@@ -22,7 +22,7 @@ class Overseer(extropy:BaseExtropyContext, name:String) extends Actor {
 
     val log = Logging(context.system, this)
     log.info(s"Setup worker: $id")
-    val pings = context.system.scheduler.schedule(0 milliseconds, extropy.overseerHeartBeat,
+    val pings = context.system.scheduler.schedule(0.milliseconds, extropy.overseerHeartBeat,
                     self, HeartBeat)(executor=context.system.dispatcher)
 
     val agent = context.actorOf(ExtropyAgent.props(id, extropy, self), "agent")
@@ -51,7 +51,7 @@ object Foreman {
 class Foreman(extropy:BaseExtropyContext, var invariant:Invariant, implicit val locker:LockerIdentity) extends Actor {
     object Ping
     object SyncDone
-    val pings = context.system.scheduler.schedule(0 milliseconds, extropy.foremanHeartBeat,
+    val pings = context.system.scheduler.schedule(0.milliseconds, extropy.foremanHeartBeat,
                     self, Ping)(executor=context.system.dispatcher)
 
     val log = Logging(context.system, this)

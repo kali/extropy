@@ -3,7 +3,6 @@ package org.zoy.kali.extropy
 import scala.concurrent.duration._
 
 import org.scalatest._
-import org.scalatest.matchers.ShouldMatchers
 
 import akka.actor.{ ActorSystem, Actor, ActorRef, Props }
 import akka.testkit.{ TestKit, TestActorRef, ImplicitSender, CallingThreadDispatcher }
@@ -14,7 +13,7 @@ import org.zoy.kali.extropy.mongo._
 import com.mongodb.casbah.Imports._
 
 class SameDocumentInvariantSpec extends TestKit(ActorSystem()) with ImplicitSender
-    with FlatSpecLike with ShouldMatchers with BeforeAndAfterAll with ExtropyFixtures {
+    with FlatSpecLike with Matchers with BeforeAndAfterAll with ExtropyFixtures {
 
     behavior of "A same-document invariant"
 

@@ -1,7 +1,6 @@
 package org.zoy.kali.extropy
 
 import org.scalatest._
-import org.scalatest.matchers.ShouldMatchers
 import org.scalatest.time._
 import org.scalatest.concurrent.Eventually
 
@@ -44,7 +43,7 @@ object RemoteControledSyncRule {
 }
 
 class WorkerSpec extends TestKit(ActorSystem("workerspec"))
-    with FlatSpecLike with ShouldMatchers with ExtropyFixtures with Eventually {
+    with FlatSpecLike with Matchers with ExtropyFixtures with Eventually {
 
     behavior of "An overseer"
 
@@ -62,8 +61,8 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         eventually {
             extropy.invariantDAO.salat.find(MongoDBObject.empty).foreach { invariant =>
                 Await.result(
-                    system.actorSelection(s"akka://workerspec/user/$name/foreman-${invariant._id}").resolveOne(10 millis),
-                    10 millis)
+                    system.actorSelection(s"akka://workerspec/user/$name/foreman-${invariant._id}").resolveOne(10.millis),
+                    10.millis)
             }
         }
     }
@@ -76,10 +75,10 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         implicit val _locker = LockerIdentity(blog.dbName)
         val locked1 = extropy.prospect.get
         val foreman = system.actorOf(Foreman.props(extropy, locked1, _locker))
-        extropy.invariantDAO.salat.findOneByID(locked1._id).get.emlp.until.getTime should not
+        extropy.invariantDAO.salat.findOneById(locked1._id).get.emlp.until.getTime should not
                  be >(locked1.emlp.until.getTime + 500)
         eventually {
-            extropy.invariantDAO.salat.findOneByID(locked1._id).get.emlp.until.getTime should
+            extropy.invariantDAO.salat.findOneById(locked1._id).get.emlp.until.getTime should
                  be >(locked1.emlp.until.getTime + 500)
         }
     }
@@ -92,8 +91,8 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         val foreman = system.actorOf(Foreman.props(extropy, locked1, _locker))
         extropy.agentDAO.readConfigurationVersion should be(0)
         eventually {
-            extropy.invariantDAO.salat.findOneByID(locked1._id).get.status should be(InvariantStatus.Sync)
-            extropy.invariantDAO.salat.findOneByID(locked1._id).get.statusChanging should be(true)
+            extropy.invariantDAO.salat.findOneById(locked1._id).get.status should be(InvariantStatus.Sync)
+            extropy.invariantDAO.salat.findOneById(locked1._id).get.statusChanging should be(true)
         }
         eventually {
             extropy.agentDAO.readConfigurationVersion should be(1)
@@ -119,12 +118,12 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         extropy.agentDAO.bumpConfigurationVersion
 
         eventually {
-            extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Sync)
-            extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
+            extropy.invariantDAO.salat.findOneById(invariant._id).get.status should be(InvariantStatus.Sync)
+            extropy.invariantDAO.salat.findOneById(invariant._id).get.statusChanging should be(true)
         }
         Thread.sleep(3000)
-        extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Sync)
-        extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
+        extropy.invariantDAO.salat.findOneById(invariant._id).get.status should be(InvariantStatus.Sync)
+        extropy.invariantDAO.salat.findOneById(invariant._id).get.statusChanging should be(true)
 
         eventually {
             val config2 = expectMsgClass(classOf[DynamicConfiguration])
@@ -133,16 +132,16 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         }
 
         eventually {
-            extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
-            extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Sync)
+            extropy.invariantDAO.salat.findOneById(invariant._id).get.statusChanging should be(true)
+            extropy.invariantDAO.salat.findOneById(invariant._id).get.status should be(InvariantStatus.Sync)
         }
         eventually {
             RemoteControlLatch.latch.get() should be(1)
         }
         RemoteControlLatch.latch.set(2)
         eventually {
-            extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(true)
-            extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Run)
+            extropy.invariantDAO.salat.findOneById(invariant._id).get.statusChanging should be(true)
+            extropy.invariantDAO.salat.findOneById(invariant._id).get.status should be(InvariantStatus.Run)
         }
 
         val config3 = expectMsgClass(classOf[DynamicConfiguration])
@@ -150,8 +149,8 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
         otherAgent ! AckDynamicConfiguration(config3)
 
         eventually {
-            extropy.invariantDAO.salat.findOneByID(invariant._id).get.statusChanging should be(false)
-            extropy.invariantDAO.salat.findOneByID(invariant._id).get.status should be(InvariantStatus.Run)
+            extropy.invariantDAO.salat.findOneById(invariant._id).get.statusChanging should be(false)
+            extropy.invariantDAO.salat.findOneById(invariant._id).get.status should be(InvariantStatus.Run)
         }
     }
 

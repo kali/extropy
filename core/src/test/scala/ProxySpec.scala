@@ -3,13 +3,12 @@ package org.zoy.kali.extropy.proxy
 import scala.concurrent.duration._
 
 import org.scalatest._
-import org.scalatest.matchers.ShouldMatchers
 
 import org.zoy.kali.extropy._
 
 import com.mongodb.casbah.Imports._
 
-class ProxySpec extends FlatSpec with ShouldMatchers with BeforeAndAfterAll with ExtropyFixtures {
+class ProxySpec extends FlatSpec with Matchers with BeforeAndAfterAll with ExtropyFixtures {
 
     behavior of "A synchronous proxy"
 

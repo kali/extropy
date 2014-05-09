@@ -5,7 +5,6 @@ import java.net.InetSocketAddress
 import org.scalatest._
 import org.scalatest.concurrent.Eventually
 import org.scalatest.time._
-import org.scalatest.matchers.ShouldMatchers
 
 import scala.concurrent.duration._
 
@@ -15,7 +14,7 @@ import com.mongodb.casbah.Imports._
 import akka.testkit.{ TestKit, TestActor }
 
 class ProxyServerSpec extends TestKit(ActorSystem("proxyspec")) with FlatSpecLike
-        with ExtropyFixtures with ShouldMatchers with Eventually {
+        with ExtropyFixtures with Matchers with Eventually {
 
     behavior of "An extropy proxy"
 

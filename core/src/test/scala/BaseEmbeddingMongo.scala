@@ -1,11 +1,10 @@
 package org.zoy.kali.extropy
 
 import org.scalatest._
-import org.scalatest.matchers.ShouldMatchers
 
 import com.mongodb.casbah.Imports._
 
-class MongodbTemporarySpec extends FlatSpec with MongodbTemporary with ShouldMatchers {
+class MongodbTemporarySpec extends FlatSpec with MongodbTemporary with Matchers {
     behavior of "A temporary mongo"
 
     it should "be running" in {

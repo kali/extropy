@@ -10,7 +10,7 @@ import mongoutils._
 class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:ActorRef) extends Actor {
     object Ping
     val logger = Logging(context.system, this)
-    val pings = context.system.scheduler.schedule(0 milliseconds, extropy.agentHeartBeat,
+    val pings = context.system.scheduler.schedule(0.milliseconds, extropy.agentHeartBeat,
                     self, Ping)(executor=context.system.dispatcher)
 
     context watch client

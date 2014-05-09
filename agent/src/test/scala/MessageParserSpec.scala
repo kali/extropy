@@ -1,12 +1,11 @@
 package org.zoy.kali.extropy.mongo
 
 import org.scalatest._
-import org.scalatest.matchers.ShouldMatchers
 
 import com.mongodb.casbah.Imports._
 import org.zoy.kali.extropy._
 
-class MessageParserSpec extends FlatSpec with ShouldMatchers {
+class MessageParserSpec extends FlatSpec with Matchers {
     implicit val _byteOrder = java.nio.ByteOrder.LITTLE_ENDIAN
 
     behavior of "Mongo message codec"

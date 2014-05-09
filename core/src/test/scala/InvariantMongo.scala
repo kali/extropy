@@ -3,13 +3,12 @@ package org.zoy.kali.extropy
 import scala.concurrent.duration._
 
 import org.scalatest._
-import org.scalatest.matchers.ShouldMatchers
 
 import org.zoy.kali.extropy._
 
 import com.mongodb.casbah.Imports._
 
-class InvariantMongoSpec extends FlatSpec with ShouldMatchers with MongodbTemporary {
+class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
 
     val fixture = BlogFixtures(s"extropy-spec-${System.currentTimeMillis}")
     import fixture._
