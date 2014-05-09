@@ -34,7 +34,7 @@ class ExtropyProxyActor(    extropy:BaseExtropyContext,
             logic = ExtropyProxyLogic(extropy, Some(c))
             sender ! AckDynamicConfiguration(logic.configuration)
         }
-        case msg@TargettedMessage(Client,_) =>
+        case msg@TargettedMessage(Client,mongo) =>
             processing.foreach( logic.postChange(_) )
             processing = Iterable()
             sender ! msg

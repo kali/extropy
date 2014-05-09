@@ -37,12 +37,34 @@ abstract class BaseProxyServerSpec extends TestKit(ActorSystem("proxyspec")) wit
         extropy.agentDAO.collection.findOne(MongoDBObject.empty).get.getAs[Long]("configurationVersion").get should be(next)
     }
 
-    it should "deal with various inserts" taggedAs(Tag("blah")) in withProxiedClient { (extropy, blog, client) =>
+    it should "deal with insert" in withProxiedClient { (extropy, blog, client) =>
         import blog._
         client(dbName)("posts").insert(post1)
         client(dbName)("posts").size should be(1)
         allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
     }
+
+    it should "deal with update" in withProxiedClient { (extropy, blog, client) =>
+        import blog._
+        client(dbName)("users").insert(userLiz)
+        client(dbName)("posts").insert(post1)
+        client(dbName)("posts").size should be(1)
+        client(dbName)("users").size should be(1)
+        client(dbName)("users").update(MongoDBObject("_id" -> "liz"), MongoDBObject("$set" -> MongoDBObject("name" -> "Foobar")))
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+    }
+
+    it should "deal with delete" in withProxiedClient { (extropy, blog, client) =>
+        import blog._
+        client(dbName)("users").insert(userLiz)
+        client(dbName)("posts").insert(post1)
+        client(dbName)("posts").size should be(1)
+        client(dbName)("users").size should be(1)
+        client(dbName)("posts").remove(MongoDBObject("_id" -> "post1"))
+        client(dbName)("posts").size should be(0)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+    }
+
 
     implicit override val patienceConfig =
         PatienceConfig(timeout = scaled(Span(3, Seconds)), interval = scaled(Span(100, Millis)))

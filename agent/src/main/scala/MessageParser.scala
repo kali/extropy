@@ -27,6 +27,11 @@ object MessageParser {
         iterator.drop(size)
         result
     }
+    def makeUpdate(fullCollectionName:String, selector:BSONObject, update:BSONObject) =
+        if(update.keys.exists( _.startsWith("$")))
+            ModifiersUpdateChange(fullCollectionName, selector, update)
+        else
+            FullBodyUpdateChange(fullCollectionName, selector, update)
 }
 import MessageParser.{ _byteOrder, readCString, readBSONObject, bsonEncoder, bsonDecoder }
 
@@ -100,11 +105,7 @@ case class OpUpdate( zero:Int, fullCollectionName:String, flags:Int,
                                 .putBytes(bsonEncoder.encode(selector))
                                 .putBytes(bsonEncoder.encode(update))
                                 .result
-    def asChanges = if(update.keys.exists( _.startsWith("$")))
-        Iterable(ModifiersUpdateChange(fullCollectionName, selector, update))
-    else
-        Iterable(FullBodyUpdateChange(fullCollectionName, selector, update))
-
+    def asChanges = Iterable(MessageParser.makeUpdate(fullCollectionName, selector, update))
 /*
     override def adoptChange(change:Change) = change match {
         case fbu:FullBodyUpdateChange => copy(update=fbu.update)
@@ -196,10 +197,33 @@ case class OpQuery( flags:Int, fullCollectionName:String, numberToSkip:Int, numb
             val collection = fullCollectionName.split('.').head + "." + query.getAs[String]("findAndModify").get
             if(remove)
                 Iterable(DeleteChange(collection, selector))
-            else if(update.keys.exists( _.startsWith("$")))
-                Iterable(ModifiersUpdateChange(collection, selector, update))
             else
-                Iterable(FullBodyUpdateChange(collection, selector, update))
+                Iterable(MessageParser.makeUpdate(collection, selector, update))
+        } else if(query.contains("insert")) {
+            val collection = fullCollectionName.split('.').head + "." + query.getAs[String]("insert").get
+            val inserts:Iterable[AnyRef] = query.getAs[java.lang.Iterable[AnyRef]]("documents")
+                .map(scala.collection.JavaConversions.iterableAsScalaIterable(_))
+                .getOrElse(Iterable())
+            inserts.map { doc => InsertChange(collection, doc.asInstanceOf[BSONObject]) }
+        } else if(query.contains("update")) {
+            val collection = fullCollectionName.split('.').head + "." + query.getAs[String]("update").get
+            val updates:Iterable[BSONObject] = query.getAs[java.lang.Iterable[BSONObject]]("updates")
+                .map(scala.collection.JavaConversions.iterableAsScalaIterable(_))
+                .getOrElse(Iterable())
+            updates.map { doc =>
+                val q = doc.getAs[BSONObject]("q").get
+                val u = doc.getAs[BSONObject]("u").get
+                MessageParser.makeUpdate(collection, q, u)
+            }
+        } else if(query.contains("delete")) {
+            val collection = fullCollectionName.split('.').head + "." + query.getAs[String]("delete").get
+            val deletes:Iterable[BSONObject] = query.getAs[java.lang.Iterable[BSONObject]]("deletes")
+                .map(scala.collection.JavaConversions.iterableAsScalaIterable(_))
+                .getOrElse(Iterable())
+            deletes.map { doc =>
+                val q = doc.getAs[BSONObject]("q").get
+                DeleteChange(collection, q)
+            }
         } else
             Iterable()
     } else

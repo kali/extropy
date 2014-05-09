@@ -22,7 +22,7 @@ trait MongodbTemporary extends BeforeAndAfterAll { this: Suite =>
     override def beforeAll() {
         System.getenv("MONGO_FOR_TEST") match {
             case a:String if(mongoWantedVersion.isEmpty) => mongoBackendPort = a.split(":").last.toInt
-            case null =>
+            case _ =>
                 val runtimeConfig = new RuntimeConfigBuilder()
                                         .defaults(Command.MongoD)
                                         .processOutput(ProcessOutput.getDefaultInstanceSilent())
