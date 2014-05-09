@@ -18,13 +18,21 @@ class InvariantSpec extends FlatSpec with Matchers {
     it should "follow ties for document locations" in {
         searchableTitleRule.tie.resolve(searchableTitleRule, DocumentLocation(post1)) should be( DocumentLocation(post1) )
         authorNameInPostRule.tie.resolve(authorNameInPostRule, DocumentLocation(post1)) should be( IdLocation("liz") )
-        postCountInUserRule.tie.resolve(postCountInUserRule, DocumentLocation(userLiz)) should be( SelectorLocation(MongoDBObject("authorId" -> "liz")) )
+        postCountInUserRule.tie.resolve(postCountInUserRule, DocumentLocation(userLiz)) should be( SimpleFilterLocation("authorId", "liz") )
+        commentCountInUserRule.tie.resolve(commentCountInUserRule, DocumentLocation(userJack)) should be(
+            SubDocumentLocation(SimpleFilterLocation("comments.authorId", "jack"), SimpleFilterLocation("authorId", "jack"))
+        )
     }
 
     it should "follow ties for id locations" in {
         searchableTitleRule.tie.resolve(searchableTitleRule, IdLocation("post1")) should be( IdLocation("post1") )
-        authorNameInPostRule.tie.resolve(authorNameInPostRule, IdLocation("post1")) should be( QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId") )
-        postCountInUserRule.tie.resolve(postCountInUserRule, IdLocation("liz")) should be( SelectorLocation(MongoDBObject("authorId" -> "liz")) )
+        authorNameInPostRule.tie.resolve(authorNameInPostRule, IdLocation("post1")) should be(
+            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId")
+        )
+        postCountInUserRule.tie.resolve(postCountInUserRule, IdLocation("liz")) should be( SimpleFilterLocation("authorId", "liz") )
+        commentCountInUserRule.tie.resolve(commentCountInUserRule, IdLocation("jack")) should be(
+            SubDocumentLocation(SimpleFilterLocation("comments.authorId", "jack"), SimpleFilterLocation("authorId", "jack"))
+        )
     }
 
     behavior of "Impact detection"
@@ -51,6 +59,7 @@ class InvariantSpec extends FlatSpec with Matchers {
         monitorPostsTitle.monitor(insertPost1) should be ( Set(DocumentLocation(post1)) )
         monitorPostsAuthorId.monitor(insertPost1) should be ( Set(DocumentLocation(post1)) )
         monitorPostsCommentsAuthorId.monitor(insertPost1) should be ( Set(DocumentLocation(post1)) )
+        monitorPostsCommentsAuthorId.monitor(insertPost2) should be ( Set(DocumentLocation(post2)) )
 
         monitorUsersName.monitor(insertNotUsers) should be( 'empty )
     }
@@ -174,6 +183,38 @@ class InvariantSpec extends FlatSpec with Matchers {
             SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId") ) ) )
     }
 
+    behavior of "a commentCountInUserRule rule"
+
+    it should "identify dirty set for inserts" in {
+        commentCountInUserRule.dirtiedSet( insertUserLiz ) should be ( Set(DocumentLocation(userLiz)) )
+        commentCountInUserRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
+        commentCountInUserRule.dirtiedSet( insertPost1 ) should be ( Set(
+            QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation("post1"), "authorId") ) ) )
+    }
+
+    it should "identify dirty set for modifiers updates" in {
+        commentCountInUserRule.dirtiedSet( setTitleOnPost1 ) should be( 'empty )
+        commentCountInUserRule.dirtiedSet( setNameOnUserLiz ) should be( 'empty )
+        commentCountInUserRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
+        commentCountInUserRule.dirtiedSet( setAuthorIdOnPost1 ) should be( Set(
+            QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation("post1"), "authorId") ) ) )
+    }
+
+    it should "identify dirty set for fbu updates" in {
+        commentCountInUserRule.dirtiedSet( fbuUserLiz ) should be ( Set(IdLocation("liz")) )
+        commentCountInUserRule.dirtiedSet( fbuPost1 ) should be ( Set(
+            QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation("post1"), "authorId") ) ) )
+    }
+
+    it should "identify dirty set for delete" in {
+        commentCountInUserRule.dirtiedSet( deleteUserLiz ) should be ( Set(IdLocation("liz")) ) // TODO: optimize me
+        commentCountInUserRule.dirtiedSet( deletePost1 ) should be ( Set(
+            QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation("post1"), "authorId"),
+            SnapshotLocation(QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation("post1"), "authorId") ) ) )
+    }
     /*
     it should "back propagate locations detected by processor" in {
         val same = SameDocumentTie(CollectionContainer(s"$dbName.posts"))

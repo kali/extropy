@@ -168,8 +168,24 @@ case class SubCollectionContainer(collectionFullName:String, arrayField:String) 
     val dbName = collectionFullName.split('.').head
     val collectionName = collectionFullName.split('.').drop(1).mkString(".")
 
-    def iterator(payloadMongo:MongoClient):Traversable[Location] = null
-    def pull(payloadMongo:MongoClient, loc:Location):Iterable[BSONObject] = null
+    def iterator(payloadMongo:MongoClient):Traversable[Location] = {
+        val cursor = payloadMongo(dbName)(collectionName).find(MongoDBObject.empty).sort(MongoDBObject("_id" -> 1))
+        cursor.option |= com.mongodb.Bytes.QUERYOPTION_NOTIMEOUT
+        cursor.toTraversable.flatMap { doc =>
+            doc.getAs[List[BSONObject]](arrayField).map { list =>
+                list.map( subdoc => SubDocumentLocation(DocumentLocation(doc), IdLocation(subdoc.getAs[AnyRef]("_id").get)) )
+            }.getOrElse(List())
+        }
+    }
+    def pull(payloadMongo:MongoClient, loc:Location):Iterable[BSONObject] = loc match {
+        case subloc:SubDocumentLocation =>
+            val main:Iterable[BSONObject] = payloadMongo(dbName)(collectionName).find(subloc.topLevelLoc.asSelectorLocation.selector).toIterable
+            val subList:Iterable[BSONObject] = main.flatMap( _.getAs[Iterable[BSONObject]](arrayField).getOrElse(Iterable()) )
+            subList.filter( loc.asInstanceOf[SubDocumentLocation].nested.matches( _ ) )
+        case _ => CollectionContainer(collectionFullName).pull(payloadMongo, loc).flatMap { doc =>
+             doc.getAs[Iterable[BSONObject]](arrayField).getOrElse(Iterable())
+        }
+    }
     def collection:String = collectionFullName
     def setValues(payloadMongo:MongoClient, location:Location, values:BSONObject) {}
     def toLabel = s"<i>$collectionFullName.$arrayField</i>"
@@ -183,11 +199,19 @@ abstract class Location {
     def expand(extropy:MongoClient):Iterable[Location]
     def optimize:Location = this
     def snapshot(mongo:MongoClient):Iterable[Location] = Some(this)
+    def matches(obj:BSONObject):Boolean
 }
 case class DocumentLocation(dbo:BSONObject) extends Location {
     override def asIdLocation:IdLocation = IdLocation(dbo.getAs[AnyRef]("_id").get)
     override def asSelectorLocation:SelectorLocation = asIdLocation.asSelectorLocation
     def expand(extropy:MongoClient):Iterable[Location] = Some(this)
+    def matches(obj:BSONObject) = obj.getAs[AnyRef]("_id").get == dbo.getAs[AnyRef]("_id").get
+}
+case class SubDocumentLocation(topLevelLoc:Location, nested:Location) extends Location {
+    override def asIdLocation:IdLocation = throw new IllegalStateException("can't make IdLocation from:" + this.toString)
+    override def asSelectorLocation:SelectorLocation = throw new IllegalStateException("can't make SelectorLocation from:" + this.toString)
+    def expand(extropy:MongoClient):Iterable[Location] = Some(this)
+    def matches(obj:BSONObject) = throw new IllegalStateException()
 }
 case class SelectorLocation(selector:BSONObject) extends Location {
     def asIdLocationOption = if(selector.size == 1 && selector.keys.head == "_id" &&
@@ -196,28 +220,44 @@ case class SelectorLocation(selector:BSONObject) extends Location {
             Some(IdLocation(selector.values.head))
         else
             None
+    def asSimpleFilterLocationOption = if(selector.size == 1 &&
+            !selector.values.head.isInstanceOf[BSONObject] &&
+            !selector.values.head.isInstanceOf[java.util.regex.Pattern])
+            Some(SimpleFilterLocation(selector.keys.head, selector.values.head))
+        else
+            None
     override def asIdLocation:IdLocation = asIdLocationOption.get
     override def asSelectorLocation = this
     override def optimize = asIdLocationOption.getOrElse(this)
     def expand(extropy:MongoClient):Iterable[Location] = Some(this)
+    def matches(obj:BSONObject) = throw new IllegalStateException()
+}
+case class SimpleFilterLocation(field:String, value:AnyRef) extends Location {
+    def asSelectorLocation = SelectorLocation(MongoDBObject(field -> value))
+    def asIdLocation = if(field == "_id") IdLocation(value) else throw new IllegalStateException
+    def expand(mongo:MongoClient):Iterable[Location] = Some(this)
+    def matches(obj:BSONObject) = obj.getAs[AnyRef](field) == Some(value)
 }
 case class IdLocation(id:AnyRef) extends Location {
     def asSelectorLocation = SelectorLocation(MongoDBObject("_id" -> id))
     def asIdLocation = this
     def expand(mongo:MongoClient):Iterable[Location] = Some(this)
+    def matches(obj:BSONObject) = obj.getAs[AnyRef]("_id").get == id
 }
 case class QueryLocation(container:Container, location:Location, field:String) extends Location {
     def asIdLocation = throw new IllegalStateException("can't make IdLocation from: " + this.toString)
     def asSelectorLocation = throw new IllegalStateException("can't make SelectorLocation from: " + this.toString)
     def expand(mongo:MongoClient):Iterable[Location] = {
-        container.pull(mongo, location).map( doc => IdLocation(doc.getAs[AnyRef](field)) )
+        container.pull(mongo, location).flatMap( doc => doc.getAs[AnyRef](field).map(IdLocation(_)) )
     }
+    def matches(obj:BSONObject) = throw new IllegalStateException()
 }
 case class SnapshotLocation(query:QueryLocation) extends Location {
     def asIdLocation = throw new IllegalStateException
     def asSelectorLocation = throw new IllegalStateException
     override def snapshot(mongo:MongoClient) = query.expand(mongo)
     def expand(mongo:MongoClient):Iterable[Location] = throw new IllegalStateException
+    def matches(obj:BSONObject) = throw new IllegalStateException()
 }
 
 // TIE
@@ -260,7 +300,12 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
 case class ReverseKeyTie(reactionFieldName:String) extends Tie {
     val effectContainerMonitoredFields:Set[String] = Set("_id")
     val reactionContainerMonitoredFields = Set(reactionFieldName)
-    def resolve(rule:Rule, from:Location) = SelectorLocation(MongoDBObject(reactionFieldName -> from.asIdLocation.id)).optimize
+    def resolve(rule:Rule, from:Location) = rule.reactionContainer match {
+        case CollectionContainer(collection) => SimpleFilterLocation(reactionFieldName, from.asIdLocation.id)
+        case SubCollectionContainer(collection, field) =>
+            SubDocumentLocation(    SimpleFilterLocation(field + "." + reactionFieldName, from.asIdLocation.id),
+                                    SimpleFilterLocation(reactionFieldName, from.asIdLocation.id))
+    }
     def backPropagate(rule:Rule, location:Location):Iterable[Location] = {
         val q = QueryLocation(rule.reactionContainer, location.asSelectorLocation.optimize, reactionFieldName)
         Array(SnapshotLocation(q), q)

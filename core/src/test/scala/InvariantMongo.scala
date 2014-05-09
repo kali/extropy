@@ -13,6 +13,38 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
     val fixture = BlogFixtures(s"extropy-spec-${System.currentTimeMillis}")
     import fixture._
 
+    behavior of "location interaction with mongo"
+
+    it should "expand correctly" in {
+        mongoBackendClient(dbName).dropDatabase
+        mongoBackendClient(dbName)("posts").insert(post1, post2)
+        mongoBackendClient(dbName)("users").insert(userLiz, userJack, userCatLady)
+        IdLocation("post1").expand(mongoBackendClient) should be( Iterable(IdLocation("post1")) )
+        DocumentLocation(userLiz).expand(mongoBackendClient) should be( Iterable(DocumentLocation(userLiz)) )
+        QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId").expand(mongoBackendClient) should be(
+            Iterable(IdLocation("liz"))
+        )
+        QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation("post2"), "authorId").expand(mongoBackendClient) should be(
+            Iterable(IdLocation("jack"))
+        )
+        an[Exception] should be thrownBy {
+            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId") ).expand(mongoBackendClient)
+        }
+    }
+
+    it should "snaphost relevant information" in {
+        mongoBackendClient(dbName).dropDatabase
+        mongoBackendClient(dbName)("posts").insert(post1, post2)
+        mongoBackendClient(dbName)("users").insert(userLiz, userJack, userCatLady)
+        IdLocation("post1").snapshot(mongoBackendClient) should be( Iterable(IdLocation("post1")) )
+        DocumentLocation(userLiz).snapshot(mongoBackendClient) should be( Iterable(DocumentLocation(userLiz)) )
+        QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId").snapshot(mongoBackendClient) should be(
+            Iterable(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId"))
+        )
+        SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId") ).
+            snapshot(mongoBackendClient) should be( Iterable( IdLocation("liz") ) )
+    }
+
     behavior of "fix one..."
 
     it should "fixOne searchableTitle" in {
@@ -41,6 +73,16 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         postCountInUserRule.fixOne(mongoBackendClient, IdLocation("liz"))
         mongoBackendClient(dbName)("users").findOne(MongoDBObject("_id" -> "liz")) should be(
             Some(userLiz ++ ("postCount" -> 2))
+        )
+    }
+
+    it should "fixOne commentCountInUserRule" in {
+        mongoBackendClient(dbName).dropDatabase
+        mongoBackendClient(dbName)("posts").insert(post2)
+        mongoBackendClient(dbName)("users").insert(userJack)
+        commentCountInUserRule.fixOne(mongoBackendClient, IdLocation("jack"))
+        mongoBackendClient(dbName)("users").findOne(MongoDBObject("_id" -> "jack")) should be(
+            Some(userJack ++ ("commentCount" -> 1))
         )
     }
 
@@ -79,6 +121,19 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         )
     }
 
+    it should "fixOne commentCountInUserRule" in {
+        mongoBackendClient(dbName).dropDatabase
+        mongoBackendClient(dbName)("posts").insert(post2, post1)
+        mongoBackendClient(dbName)("users").insert(userJack, userLiz)
+        commentCountInUserRule.fixAll(mongoBackendClient)
+        mongoBackendClient(dbName)("users").findOne(MongoDBObject("_id" -> "liz")) should be(
+            Some(userLiz ++ ("commentCount" -> 0))
+        )
+        mongoBackendClient(dbName)("users").findOne(MongoDBObject("_id" -> "jack")) should be(
+            Some(userJack ++ ("commentCount" -> 1))
+        )
+    }
+
     behavior of "check all..."
 
     it should "check all searchableTitle" in {
@@ -113,6 +168,18 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
 
         postCountInUserRule.fixAll(mongoBackendClient)
         errors = postCountInUserRule.checkAll(mongoBackendClient)
+        errors should have size(0)
+    }
+
+    it should "fixOne commentCountInUserRule" in {
+        mongoBackendClient(dbName).dropDatabase
+        mongoBackendClient(dbName)("posts").insert(post2, post1)
+        mongoBackendClient(dbName)("users").insert(userJack, userLiz)
+        var errors = commentCountInUserRule.checkAll(mongoBackendClient)
+        errors should have size(2)
+
+        commentCountInUserRule.fixAll(mongoBackendClient)
+        errors = commentCountInUserRule.checkAll(mongoBackendClient)
         errors should have size(0)
     }
 }

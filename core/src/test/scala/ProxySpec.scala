@@ -17,7 +17,6 @@ class ProxySpec extends FlatSpec with Matchers with BeforeAndAfterAll with Extro
         import fixture._
         Seq(insertPost1,insertPost2,insertUserLiz,insertUserJack).permutations.foreach { perm =>
             Seq("users", "posts").foreach( extropy.payloadMongo(dbName)(_).remove(MongoDBObject.empty) )
-            extropy.payloadMongo(dbName)("users").remove(MongoDBObject.empty)
             perm.foreach { op =>
                 proxy.doChange(op)
                 allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }

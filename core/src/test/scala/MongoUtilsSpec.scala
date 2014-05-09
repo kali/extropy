@@ -42,7 +42,7 @@ class MongoLockingPoolSpec extends FlatSpec with Matchers with BeforeAndAfterAll
         super.beforeEach
         collection = mongoBackendClient("test")("mongo_locking_pool_test")
         collection.drop
-        mlp = MongoLockingPool(collection, defaultTimeout=100.milliseconds)
+        mlp = MongoLockingPool(collection, defaultTimeout=250.milliseconds)
     }
 
     implicit val _lockerId:LockerIdentity = LockerIdentity("me")
