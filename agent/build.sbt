@@ -6,7 +6,7 @@ fork in test := true
 
 parallelExecution in Test := false
 
-val akkaVersion = "2.3.1"
+val akkaVersion = "2.3.2"
 
 libraryDependencies ++= Seq(
     "com.typesafe.akka" %% "akka-actor" % akkaVersion,
