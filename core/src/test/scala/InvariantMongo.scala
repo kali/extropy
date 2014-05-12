@@ -19,16 +19,16 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post1, post2)
         mongoBackendClient(dbName)("users").insert(userLiz, userJack, userCatLady)
-        IdLocation("post1").expand(mongoBackendClient) should be( Iterable(IdLocation("post1")) )
-        DocumentLocation(userLiz).expand(mongoBackendClient) should be( Iterable(DocumentLocation(userLiz)) )
-        QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId").expand(mongoBackendClient) should be(
-            Iterable(IdLocation("liz"))
+        IdLocation(posts,"post1").expand(mongoBackendClient) should be( Iterable(IdLocation(posts,"post1")) )
+        DocumentLocation(users,userLiz).expand(mongoBackendClient) should be( Iterable(DocumentLocation(users,userLiz)) )
+        QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId").expand(mongoBackendClient) should be(
+            Iterable(IdLocation(users,"liz"))
         )
-        QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation("post2"), "authorId").expand(mongoBackendClient) should be(
-            Iterable(IdLocation("jack"))
+        QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post2"), "authorId").expand(mongoBackendClient) should be(
+            Iterable(IdLocation(users,"jack"))
         )
         an[Exception] should be thrownBy {
-            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId") ).expand(mongoBackendClient)
+            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId") ).expand(mongoBackendClient)
         }
     }
 
@@ -36,13 +36,13 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post1, post2)
         mongoBackendClient(dbName)("users").insert(userLiz, userJack, userCatLady)
-        IdLocation("post1").snapshot(mongoBackendClient) should be( Iterable(IdLocation("post1")) )
-        DocumentLocation(userLiz).snapshot(mongoBackendClient) should be( Iterable(DocumentLocation(userLiz)) )
-        QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId").snapshot(mongoBackendClient) should be(
-            Iterable(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId"))
+        IdLocation(posts,"post1").snapshot(mongoBackendClient) should be( Iterable(IdLocation(posts,"post1")) )
+        DocumentLocation(users,userLiz).snapshot(mongoBackendClient) should be( Iterable(DocumentLocation(users,userLiz)) )
+        QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId").snapshot(mongoBackendClient) should be(
+            Iterable(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"))
         )
-        SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation("post1"), "authorId") ).
-            snapshot(mongoBackendClient) should be( Iterable( IdLocation("liz") ) )
+        SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId") ).
+            snapshot(mongoBackendClient) should be( Iterable( IdLocation(users,"liz") ) )
     }
 
     behavior of "fix one..."
@@ -50,7 +50,7 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
     it should "fixOne searchableTitle" in {
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post1)
-        searchableTitleRule.fixOne(mongoBackendClient, IdLocation("post1"))
+        searchableTitleRule.fixOne(mongoBackendClient, IdLocation(posts,"post1"))
         mongoBackendClient(dbName)("posts").findOne(MongoDBObject("_id" -> "post1")) should be(
             Some(post1 ++ ("searchableTitle" -> "title for post 1"))
         )
@@ -60,7 +60,7 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post1)
         mongoBackendClient(dbName)("users").insert(userLiz)
-        authorNameInPostRule.fixOne(mongoBackendClient, IdLocation("post1"))
+        authorNameInPostRule.fixOne(mongoBackendClient, IdLocation(posts,"post1"))
         mongoBackendClient(dbName)("posts").findOne(MongoDBObject("_id" -> "post1")) should be(
             Some(post1 ++ ("authorName" -> "Elizabeth Lemon"))
         )
@@ -70,7 +70,7 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post1,post2)
         mongoBackendClient(dbName)("users").insert(userLiz)
-        postCountInUserRule.fixOne(mongoBackendClient, IdLocation("liz"))
+        postCountInUserRule.fixOne(mongoBackendClient, IdLocation(users,"liz"))
         mongoBackendClient(dbName)("users").findOne(MongoDBObject("_id" -> "liz")) should be(
             Some(userLiz ++ ("postCount" -> 2))
         )
@@ -80,7 +80,7 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post2)
         mongoBackendClient(dbName)("users").insert(userJack)
-        commentCountInUserRule.fixOne(mongoBackendClient, IdLocation("jack"))
+        commentCountInUserRule.fixOne(mongoBackendClient, IdLocation(users,"jack"))
         mongoBackendClient(dbName)("users").findOne(MongoDBObject("_id" -> "jack")) should be(
             Some(userJack ++ ("commentCount" -> 1))
         )

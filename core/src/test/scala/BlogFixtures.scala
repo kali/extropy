@@ -9,31 +9,35 @@ posts: ( _id, authorId, authorName*, title, searchableTitle*, comments[ { author
 
 case class BlogFixtures(dbName:String) {
 
+    val posts = CollectionContainer(s"$dbName.posts")
+    val users = CollectionContainer(s"$dbName.users")
+
     // some rules
-    val searchableTitleRule = Rule(     CollectionContainer(s"$dbName.posts"), CollectionContainer(s"$dbName.posts"),
+    val searchableTitleRule = Rule(     posts, posts,
                                         SameDocumentTie(), StringNormalizationReaction("title", "searchableTitle"))
 
-    val authorNameInPostRule = Rule(    CollectionContainer(s"$dbName.posts"), CollectionContainer(s"$dbName.users"),
+    val authorNameInPostRule = Rule(    posts, users,
                                         FollowKeyTie("authorId"), CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
-    val postCountInUserRule = Rule(     CollectionContainer(s"$dbName.users"), CollectionContainer(s"$dbName.posts"),
+    val postCountInUserRule = Rule(     users, posts,
                                         ReverseKeyTie("authorId"), CountReaction("postCount"))
 
-    val commentCountInUserRule = Rule(  CollectionContainer(s"$dbName.users"), SubCollectionContainer(s"$dbName.posts", "comments"),
+
+    val commentCountInUserRule = Rule(  users, SubCollectionContainer(s"$dbName.posts", "comments"),
                                         ReverseKeyTie("authorId"), CountReaction("commentCount"))
 
-    val authorNameInCommentRule = Rule( SubCollectionContainer(s"$dbName.posts","comments"), CollectionContainer(s"$dbName.users"),
+    val authorNameInCommentRule = Rule( SubCollectionContainer(s"$dbName.posts","comments"), users,
                                         FollowKeyTie("authorId"), CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
     // FIXME: commentCountInPostRule
 
-    val allRules = Array( searchableTitleRule, authorNameInPostRule, postCountInUserRule, commentCountInUserRule, authorNameInCommentRule)
+    val allRules = Array( searchableTitleRule, authorNameInPostRule, postCountInUserRule /*, commentCountInUserRule, authorNameInCommentRule */)
 
     // some monitored fields
-    val monitorUsersId = MonitoredField(CollectionContainer(s"$dbName.users"), "_id") // id can not change, but this allow to detect insertion of users
-    val monitorUsersName = MonitoredField(CollectionContainer(s"$dbName.users"), "name")
-    val monitorPostsTitle = MonitoredField(CollectionContainer(s"$dbName.posts"), "title")
-    val monitorPostsAuthorId = MonitoredField(CollectionContainer(s"$dbName.posts"), "authorId")
+    val monitorUsersId = MonitoredField(users, "_id") // id can not change, but this allow to detect insertion of users
+    val monitorUsersName = MonitoredField(users, "name")
+    val monitorPostsTitle = MonitoredField(posts, "title")
+    val monitorPostsAuthorId = MonitoredField(posts, "authorId")
     val monitorPostsCommentsAuthorId = MonitoredField(SubCollectionContainer(s"$dbName.posts", "comments"), "authorId")
 
     // some data
