@@ -57,10 +57,19 @@ case class MonitoredField(container:Container, field:String) {
     def monitor(op:Change):Set[Location] =
         if(container.collection == op.writtenCollection)
             op match {
-                case InsertChange(writtenCollection, document) => if(document.containsField(field))
-                        Set(DocumentLocation(document))
-                    else
-                        Set()
+                case InsertChange(writtenCollection, document) => container match {
+                    case CollectionContainer(collection) =>
+                        if(document.containsField(field))
+                            Set(DocumentLocation(document))
+                        else
+                            Set()
+                    case SubCollectionContainer(collection, arrayField) =>
+                        if(document.containsField(arrayField) &&
+                            document.getAs[List[BSONObject]](arrayField).get.exists(subdoc => subdoc.containsField(field)) )
+                            Set(SubDocumentLocation(DocumentLocation(document), SelectorLocation(MongoDBObject.empty)))
+                        else
+                            Set()
+                }
                 case DeleteChange(writtenCollection, selector) =>
                     Set(SelectorLocation(selector).optimize)
                 case muc @ ModifiersUpdateChange(writtenCollection, selector, update) =>
@@ -228,7 +237,7 @@ case class SelectorLocation(selector:BSONObject) extends Location {
             None
     override def asIdLocation:IdLocation = asIdLocationOption.get
     override def asSelectorLocation = this
-    override def optimize = asIdLocationOption.getOrElse(this)
+    override def optimize = asIdLocationOption orElse asSimpleFilterLocationOption getOrElse this
     def expand(extropy:MongoClient):Iterable[Location] = Some(this)
     def matches(obj:BSONObject) = throw new IllegalStateException()
 }
@@ -291,9 +300,14 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
         case DocumentLocation(doc) => IdLocation(doc.getAs[AnyRef](localFieldName).get)
         case SelectorLocation(sel) => SelectorLocation(MongoDBObject("_id" -> sel.getAs[AnyRef](localFieldName).get))
         case idl:IdLocation => QueryLocation(rule.effectContainer, idl, localFieldName)
+        case SubDocumentLocation(_,DocumentLocation(subdoc)) => IdLocation(subdoc.getAs[AnyRef](localFieldName).get)
     }
-    def backPropagate(rule:Rule, location:Location):Iterable[Location] = Some(SelectorLocation(MongoDBObject(localFieldName -> location.asIdLocation.id)).optimize)
-
+    def backPropagate(rule:Rule, location:Location):Iterable[Location] = rule.effectContainer match {
+        case a:CollectionContainer => Some(SimpleFilterLocation(localFieldName, location.asIdLocation.id))
+        case SubCollectionContainer(_,field) =>
+            Some(SubDocumentLocation(   SimpleFilterLocation(field + "." + localFieldName, location.asIdLocation.id),
+                                        SimpleFilterLocation(localFieldName, location.asIdLocation.id)))
+    }
     def toLabel = s"following <i>$localFieldName</i> to"
 }
 

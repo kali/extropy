@@ -22,12 +22,12 @@ case class BlogFixtures(dbName:String) {
     val commentCountInUserRule = Rule(  CollectionContainer(s"$dbName.users"), SubCollectionContainer(s"$dbName.posts", "comments"),
                                         ReverseKeyTie("authorId"), CountReaction("commentCount"))
 
-    val authorNameInComment = Rule(     SubCollectionContainer(s"$dbName.posts","comments"), CollectionContainer(s"$dbName.users"),
+    val authorNameInCommentRule = Rule( SubCollectionContainer(s"$dbName.posts","comments"), CollectionContainer(s"$dbName.users"),
                                         FollowKeyTie("authorId"), CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
     // FIXME: commentCountInPostRule
 
-    val allRules = Array( searchableTitleRule, authorNameInPostRule, postCountInUserRule, commentCountInUserRule /*, authorNameInComment */) // FIXME
+    val allRules = Array( searchableTitleRule, authorNameInPostRule, postCountInUserRule, commentCountInUserRule, authorNameInCommentRule)
 
     // some monitored fields
     val monitorUsersId = MonitoredField(CollectionContainer(s"$dbName.users"), "_id") // id can not change, but this allow to detect insertion of users
@@ -41,9 +41,10 @@ case class BlogFixtures(dbName:String) {
     val userJack = MongoDBObject("_id" -> "jack", "name" -> "John Francis \"Jack\" Donaghy")
     val userCatLady = MongoDBObject("_id" -> "catLady")
 
+    val comment1 = MongoDBObject("_id" -> "comment1", "authorId" -> "jack")
     val post1 = MongoDBObject("_id" -> "post1", "title" -> "Title for Post 1", "authorId" -> "liz")
     val post2 = MongoDBObject("_id" -> "post2", "title" -> "Title for Post 2", "authorId" -> "liz",
-                    "comments" -> MongoDBList(MongoDBObject("_id" -> "comment1", "authorId" -> "jack")))
+                    "comments" -> MongoDBList(comment1))
 
     // some inserts
     val insertUserLiz = InsertChange(s"$dbName.users", userLiz)
