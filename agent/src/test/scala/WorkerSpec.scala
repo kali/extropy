@@ -14,32 +14,32 @@ import scala.concurrent.duration._
 import scala.concurrent.Await
 
 import mongoutils._
+import mongoutils.BSONObjectConversions._
 
 object RemoteControlLatch {
     val latch = new java.util.concurrent.atomic.AtomicInteger(0)
 }
 
-case class RemoteControledContainer(name:String) extends Container {
-    val inner = CollectionContainer(name)
-    def collection = inner.collection
-    def collectionName = inner.collectionName
-    def dbName = inner.dbName
-    def pull(payloadMongo:MongoClient,loc:Location):Iterable[BSONObject] = inner.pull(payloadMongo, loc)
-    def setValues(payloadMongo:MongoClient,location:Location,values:BSONObject) {
-        inner.setValues(payloadMongo, location, values)
-    }
-    def iterator(payloadMongo:MongoClient) = {
-        RemoteControlLatch.latch.set(1)
-        while(RemoteControlLatch.latch.get() < 2)
-            Thread.sleep(10)
-        inner.iterator(payloadMongo)
-    }
-    def toLabel = "RemoteControledContainer"
+object RemoteControledSyncRule {
+    def apply(col:String) =
+        Rule(CollectionContainer(col), CollectionContainer(col), SameDocumentTie(),
+                RemoteControlledStringNormalizationReaction("foo", "bar"))
 }
 
-object RemoteControledSyncRule {
-    def apply(label:String) =
-        Rule(new RemoteControledContainer(label), new RemoteControledContainer(label), SameDocumentTie(), StringNormalizationReaction("foo", "bar"))
+case class RemoteControlledStringNormalizationReaction(from:String, to:String) extends Reaction {
+    val reactionFields:Set[String] = Set(from)
+    def process(data:Traversable[BSONObject]) = {
+        if(RemoteControlLatch.latch.get() == 0) {
+            RemoteControlLatch.latch.set(1)
+            while(RemoteControlLatch.latch.get() < 2)
+                Thread.sleep(10)
+        }
+        Map(to -> (data.headOption match {
+            case Some(obj) => obj.getAs[String](from).getOrElse("").toString.toLowerCase
+            case None => null
+        }))
+    }
+    def toLabel = s"normalize <i>$from</i> as <i>$to</i>"
 }
 
 class WorkerSpec extends TestKit(ActorSystem("workerspec"))
@@ -101,12 +101,13 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
 
     behavior of "A worker"
 
-    it should "bring an invariant from Created to Run, through Sync" in withExtropyAndBlog { (extropy,blog) =>
+    it should "bring an invariant from Created to Run, through Sync" taggedAs(Tag("w")) in withExtropyAndBlog { (extropy,blog) =>
         // don't actually use the blog fixture
         extropy.invariantDAO.salat.remove(MongoDBObject.empty)
         extropy.agentDAO.readConfigurationVersion should be(0)
 
-        val invariant = Invariant(RemoteControledSyncRule("foo.bar"))
+        val invariant = Invariant(RemoteControledSyncRule(s"${blog.dbName}.bar"))
+        extropy.payloadMongo(blog.dbName)("bar").save(MongoDBObject.empty)
 
         val name = "overseer"
         val overseer = system.actorOf(Overseer.props(extropy, name), name)

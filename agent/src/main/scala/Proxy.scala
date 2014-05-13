@@ -25,7 +25,7 @@ class ExtropyProxyActor(    extropy:BaseExtropyContext,
     var logic = ExtropyProxyLogic(extropy, optionalConfiguration)
 
     var responseId:Int = 0
-    var processing:Iterable[AnalysedChange] = Iterable()
+    var processing:Iterable[ResolvableChange] = Iterable()
 
     def nextResponseId = { responseId+=1 ; responseId }
 

@@ -170,7 +170,7 @@ class InvariantSpec extends FlatSpec with Matchers {
         postCountInUserRule.dirtiedSet( insertUserLiz ) should be ( Set(DocumentLocation(users,userLiz)) )
         postCountInUserRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
         postCountInUserRule.dirtiedSet( insertPost1 ) should be ( Set(
-            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), DocumentLocation(posts,post1), "authorId"))
+            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.users"), DocumentLocation(posts,post1), "authorId"))
         ))
     }
 
@@ -179,21 +179,21 @@ class InvariantSpec extends FlatSpec with Matchers {
         postCountInUserRule.dirtiedSet( setNameOnUserLiz ) should be( 'empty )
         postCountInUserRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
         postCountInUserRule.dirtiedSet( setAuthorIdOnPost1 ) should be( Set(
-            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"))
+            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.users"), IdLocation(posts,"post1"), "authorId"))
         ))
     }
 
     it should "identify dirty set for fbu updates" in {
         postCountInUserRule.dirtiedSet( fbuUserLiz ) should be ( Set(IdLocation(users,"liz")) )
         postCountInUserRule.dirtiedSet( fbuPost1 ) should be ( Set(
-            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"))
+            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.users"), IdLocation(posts,"post1"), "authorId"))
         ))
     }
 
     it should "identify dirty set for delete" in {
         postCountInUserRule.dirtiedSet( deleteUserLiz ) should be ( Set(IdLocation(users,"liz")) ) // TODO: optimize me
         postCountInUserRule.dirtiedSet( deletePost1 ) should be ( Set(
-            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"))
+            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.users"), IdLocation(posts,"post1"), "authorId"))
         ))
     }
 

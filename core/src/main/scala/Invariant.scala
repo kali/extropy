@@ -63,14 +63,6 @@ case class MonitoredField(container:Container, field:String) {
                             Set(DocumentLocation(CollectionContainer(collection), document))
                         else
                             Set()
-/*
-                    case SubCollectionContainer(collection, arrayField) =>
-                        if(document.containsField(arrayField) &&
-                            document.getAs[List[BSONObject]](arrayField).get.exists(subdoc => subdoc.containsField(field)) )
-                            Set(SubDocumentLocation(DocumentLocation(document), SelectorLocation(MongoDBObject.empty)))
-                        else
-                            Set()
-*/
                 }
                 case DeleteChange(writtenCollection, selector) =>
                     Set(SelectorLocation.make(CollectionContainer(writtenCollection), selector))
@@ -144,12 +136,6 @@ abstract class Container {
 
     def asLocation:ResolvedLocation
 
-/*
-    def iterator(payloadMongo:MongoClient):Traversable[ResolvedLocation]
-    def pull(payloadMongo:MongoClient, loc:Location):Traversable[BSONObject]
-
-    def setValues(payloadMongo:MongoClient, location:Location, values:BSONObject)
-*/
     def toLabel:String
 }
 
@@ -160,29 +146,7 @@ case class CollectionContainer(collectionFullName:String) extends Container {
     def collection = collectionFullName
 
     def asLocation = SelectorLocation(this, MongoDBObject.empty)
-/*
-    def iterator(payloadMongo:MongoClient) = {
-        val cursor = payloadMongo(dbName)(collectionName).find(MongoDBObject.empty).sort(MongoDBObject("_id" -> 1))
-        cursor.option |= com.mongodb.Bytes.QUERYOPTION_NOTIMEOUT
-        cursor.toTraversable.map( DocumentLocation(this, _) )
-    }
 
-    def pull(payloadMongo:MongoClient, loc:Location):Traversable[BSONObject] = {
-        val selectable = loc.asInstanceOf[TopLevelLocation].asSelectable(payloadMongo)
-        selectable.flatMap( loc => payloadMongo(dbName)(collectionName).find(loc.selector) )
-    }
-
-    def setValues(payloadMongo:MongoClient, location:Location, values:BSONObject) {
-        if(!values.isEmpty) {
-            location.asInstanceOf[TopLevelLocation].asSelectable(payloadMongo).foreach { sel =>
-                payloadMongo(dbName)(collectionName).update(
-                    sel.selector, MongoDBObject("$set" -> values),
-                    multi=true
-                )
-            }
-        }
-    }
-*/
     def toLabel = s"<i>$collectionFullName</i>"
     override def toString = collectionFullName
 }
@@ -192,27 +156,6 @@ case class SubCollectionContainer(collectionFullName:String, arrayField:String) 
     val collectionName = collectionFullName.split('.').drop(1).mkString(".")
 
     def asLocation = null
-/*
-    def iterator(payloadMongo:MongoClient):Traversable[ResolvedLocation] = {
-        val cursor = payloadMongo(dbName)(collectionName).find(MongoDBObject.empty).sort(MongoDBObject("_id" -> 1))
-        cursor.option |= com.mongodb.Bytes.QUERYOPTION_NOTIMEOUT
-        cursor.toTraversable.flatMap { doc =>
-            doc.getAs[List[BSONObject]](arrayField).map { list =>
-                list.map( subdoc => SubDocumentLocation(DocumentLocation(doc), IdLocation(subdoc.getAs[AnyRef]("_id").get)) )
-            }.getOrElse(List())
-        }
-        List()
-    }
-    def pull(payloadMongo:MongoClient, loc:Location):Traversable[BSONObject] = loc match {
-        case subloc:SubDocumentLocation => Traversable()
-            val main:Traversable[BSONObject] = payloadMongo(dbName)(collectionName).find(subloc.topLevelLoc.asSelectorLocation.selector).toTraversable
-            val subList:Traversable[BSONObject] = main.flatMap( _.getAs[Traversable[BSONObject]](arrayField).getOrElse(Traversable()) )
-            subList.filter( loc.asInstanceOf[SubDocumentLocation].nested.matches( _ ) )
-        case _ => CollectionContainer(collectionFullName).pull(payloadMongo, loc).flatMap { doc =>
-             doc.getAs[Traversable[BSONObject]](arrayField).getOrElse(Traversable())
-        }
-    }
-*/
     def collection:String = collectionFullName
     def setValues(payloadMongo:MongoClient, location:Location, values:BSONObject) {}
     def toLabel = s"<i>$collectionFullName.$arrayField</i>"
@@ -221,7 +164,6 @@ case class SubCollectionContainer(collectionFullName:String, arrayField:String) 
 // LOCATIONS
 abstract class Location {
     def container:Container
-//    def matches(obj:BSONObject):Boolean
 }
 sealed trait ResolvableLocation extends Location {
     def resolve(payloadMongo:MongoClient):Traversable[ResolvedLocation]
@@ -256,31 +198,12 @@ sealed trait TopLevelResolvedLocation extends TopLevelLocation with ResolvedLoca
 trait HaveIdLocation extends Location {
     def id:AnyRef
 }
-case class DocumentLocation(container:CollectionContainer, data:BSONObject) extends TopLevelResolvedLocation with DataLocation with HaveIdLocation {
+case class DocumentLocation(container:CollectionContainer, data:BSONObject) extends TopLevelResolvedLocation
+        with DataLocation with HaveIdLocation {
     def id = data.getAs[AnyRef]("_id").get
     def selector = MongoDBObject("_id" -> id)
-//    def matches(obj:BSONObject) = obj.getAs[AnyRef]("_id").get == data.getAs[AnyRef]("_id").get
 }
-case class SelectorLocation(container:CollectionContainer, selector:BSONObject) extends TopLevelResolvedLocation {
-/*
-    def asIdLocationOption = if(selector.size == 1 && selector.keys.head == "_id" &&
-            !selector.values.head.isInstanceOf[BSONObject] &&
-            !selector.values.head.isInstanceOf[java.util.regex.Pattern])
-            Some(IdLocation(container, selector.values.head))
-        else
-            None
-    def asSimpleFilterLocationOption = if(selector.size == 1 &&
-            !selector.values.head.isInstanceOf[BSONObject] &&
-            !selector.values.head.isInstanceOf[java.util.regex.Pattern])
-            Some(SimpleFilterLocation(container, selector.keys.head, selector.values.head))
-        else
-            None
-    override def asIdLocation:IdLocation = asIdLocationOption.get
-    override def asSelectorLocation = this
-    override def optimize = asIdLocationOption orElse asSimpleFilterLocationOption getOrElse this
-    def matches(obj:BSONObject) = throw new IllegalStateException()
-*/
-}
+case class SelectorLocation(container:CollectionContainer, selector:BSONObject) extends TopLevelResolvedLocation
 object SelectorLocation {
     def make(container:CollectionContainer, selector:BSONObject) =
         if(selector.size == 1 && selector.keys.head == "_id" &&
@@ -294,47 +217,26 @@ object SelectorLocation {
         else
             new SelectorLocation(container, selector)
 }
-case class SimpleFilterLocation(container:CollectionContainer, field:String, value:AnyRef) extends TopLevelResolvedLocation {
-/*
-    def asSelectorLocation = SelectorLocation(container, MongoDBObject(field -> value))
-    def asIdLocation = if(field == "_id") IdLocation(container, value) else throw new IllegalStateException
-    def matches(obj:BSONObject) = obj.getAs[AnyRef](field) == Some(value)
-*/
+case class SimpleFilterLocation(container:CollectionContainer, field:String, value:AnyRef)
+        extends TopLevelResolvedLocation {
     def selector = MongoDBObject(field -> value)
 }
-case class IdLocation(container:CollectionContainer, id:AnyRef) extends TopLevelResolvedLocation with HaveIdLocation {
-/*
-    def asSelectorLocation = SelectorLocation(container, MongoDBObject("_id" -> id))
-    def asIdLocation = this
-    def matches(obj:BSONObject) = obj.getAs[AnyRef]("_id").get == id
-*/
+case class IdLocation(container:CollectionContainer, id:AnyRef)
+        extends TopLevelResolvedLocation with HaveIdLocation {
     def selector = MongoDBObject("_id" -> id)
 }
 
-case class QueryLocation(container:CollectionContainer, location:TopLevelResolvedLocation, field:String) extends TopLevelLocation with ResolvableLocation {
+case class QueryLocation(container:CollectionContainer, location:TopLevelResolvedLocation, field:String)
+        extends TopLevelLocation with ResolvableLocation {
     def resolve(mongo:MongoClient):Traversable[ResolvedLocation] = {
         location.iterator(mongo).flatMap( doc => doc.data.getAs[AnyRef](field).map(IdLocation(container,_)) )
     }
-/*
-    def matches(obj:BSONObject) = throw new IllegalStateException()
-*/
 }
 case class ShakyLocation(query:ResolvableLocation) extends Location {
     def container = query.container
     def save(mongo:MongoClient):Traversable[ResolvableLocation] = query.resolve(mongo) ++ Traversable(query)
-/*
-    def matches(obj:BSONObject) = throw new IllegalStateException()
-*/
 }
 
-/*
-case class SubDocumentLocation(topLevelLoc:Location, nested:Location) extends Location {
-//    override def asIdLocation:IdLocation = throw new IllegalStateException("can't make IdLocation from:" + this.toString)
-//    override def asSelectorLocation:SelectorLocation = throw new IllegalStateException("can't make SelectorLocation from:" + this.toString)
-    def expand(extropy:MongoClient):Traversable[Location] = Some(this)
-    def matches(obj:BSONObject) = throw new IllegalStateException()
-}
-*/
 // TIE
 
 @Salat
@@ -367,12 +269,6 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
                                         data.data.getAs[AnyRef](localFieldName).get)
         case tld:TopLevelResolvedLocation => QueryLocation(rule.reactionContainer.asInstanceOf[CollectionContainer],
                                                 tld, localFieldName)
-/*
-        case SelectorLocation(sel) => IdLocation(rule.effectContainer.asInstanceOf[CollectionContainer],
-                                        sel.getAs[AnyRef](localFieldName).get)
-        case idl:IdLocation => QueryLocation(rule.effectContainer.asInstanceOf[CollectionContainer], idl, localFieldName)
-        case SubDocumentLocation(_,DocumentLocation(subdoc)) => IdLocation(subdoc.getAs[AnyRef](localFieldName).get)
-*/
     }
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location] = rule.effectContainer match {
         case cc:CollectionContainer => location match {
@@ -380,10 +276,6 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
             case tld:TopLevelResolvedLocation => Some(QueryLocation(cc, tld, "_id"))
         }
         case SubCollectionContainer(_,field) => null
-/*
-            Some(SubDocumentLocation(   SimpleFilterLocation(field + "." + localFieldName, location.asIdLocation.id),
-                                        SimpleFilterLocation(localFieldName, location.asIdLocation.id)))
-*/
     }
     def toLabel = s"following <i>$localFieldName</i> to"
 }
@@ -397,16 +289,11 @@ case class ReverseKeyTie(reactionFieldName:String) extends Tie {
             case tld:TopLevelResolvedLocation => QueryLocation(cc, tld, "_id")
         }
         case SubCollectionContainer(collection, field) => null
-/*
-            SubDocumentLocation(
-                SimpleFilterLocation(null, field + "." + reactionFieldName, from.asIdLocation.id),
-                SimpleFilterLocation(null, reactionFieldName, from.asIdLocation.id))
-*/
     }
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location] = {
         val q = location match {
             case sel:TopLevelResolvedLocation =>
-                QueryLocation(rule.reactionContainer.asInstanceOf[CollectionContainer], sel, reactionFieldName)
+                QueryLocation(rule.effectContainer.asInstanceOf[CollectionContainer], sel, reactionFieldName)
         }
         Traversable(ShakyLocation(q))
     }
