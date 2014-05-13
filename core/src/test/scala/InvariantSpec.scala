@@ -16,9 +16,9 @@ class InvariantSpec extends FlatSpec with Matchers {
     behavior of "Ties"
 
     it should "resolve document locations" in {
-        searchableTitleRule.tie.resolve(searchableTitleRule, DocumentLocation(posts,post1)) should be( DocumentLocation(posts,post1) )
-        authorNameInPostRule.tie.resolve(authorNameInPostRule, DocumentLocation(posts,post1)) should be( IdLocation(users,"liz") )
-        postCountInUserRule.tie.resolve(postCountInUserRule, DocumentLocation(users,userLiz)) should be( SimpleFilterLocation(posts,"authorId", "liz") )
+        searchableTitleRule.tie.propagate(searchableTitleRule, DocumentLocation(posts,post1)) should be( DocumentLocation(posts,post1) )
+        authorNameInPostRule.tie.propagate(authorNameInPostRule, DocumentLocation(posts,post1)) should be( IdLocation(users,"liz") )
+        postCountInUserRule.tie.propagate(postCountInUserRule, DocumentLocation(users,userLiz)) should be( SimpleFilterLocation(posts,"authorId", "liz") )
 /*
         commentCountInUserRule.tie.resolve(commentCountInUserRule, DocumentLocation(users,userJack)) should be(
             SubDocumentLocation(SimpleFilterLocation("comments.authorId", "jack"), SimpleFilterLocation(posts,"authorId", "jack"))
@@ -32,11 +32,11 @@ class InvariantSpec extends FlatSpec with Matchers {
     }
 
     it should "resolve id locations" in {
-        searchableTitleRule.tie.resolve(searchableTitleRule, IdLocation(posts,"post1")) should be( IdLocation(posts,"post1") )
-        authorNameInPostRule.tie.resolve(authorNameInPostRule, IdLocation(posts,"post1")) should be(
-            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId")
+        searchableTitleRule.tie.propagate(searchableTitleRule, IdLocation(posts,"post1")) should be( IdLocation(posts,"post1") )
+        authorNameInPostRule.tie.propagate(authorNameInPostRule, IdLocation(posts,"post1")) should be(
+            QueryLocation(CollectionContainer(s"$dbName.users"), IdLocation(posts,"post1"), "authorId")
         )
-        postCountInUserRule.tie.resolve(postCountInUserRule, IdLocation(users,"liz")) should be( SimpleFilterLocation(posts,"authorId", "liz") )
+        postCountInUserRule.tie.propagate(postCountInUserRule, IdLocation(users,"liz")) should be( SimpleFilterLocation(posts,"authorId", "liz") )
 /*
         commentCountInUserRule.tie.resolve(commentCountInUserRule, IdLocation(users,"jack")) should be(
             SubDocumentLocation(SimpleFilterLocation("comments.authorId", "jack"), SimpleFilterLocation(posts,"authorId", "jack"))
@@ -170,8 +170,8 @@ class InvariantSpec extends FlatSpec with Matchers {
         postCountInUserRule.dirtiedSet( insertUserLiz ) should be ( Set(DocumentLocation(users,userLiz)) )
         postCountInUserRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
         postCountInUserRule.dirtiedSet( insertPost1 ) should be ( Set(
-            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"),
-            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId") ) ) )
+            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), DocumentLocation(posts,post1), "authorId"))
+        ))
     }
 
     it should "identify dirty set for modifiers updates" in {
@@ -179,22 +179,22 @@ class InvariantSpec extends FlatSpec with Matchers {
         postCountInUserRule.dirtiedSet( setNameOnUserLiz ) should be( 'empty )
         postCountInUserRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
         postCountInUserRule.dirtiedSet( setAuthorIdOnPost1 ) should be( Set(
-            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"),
-            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId") ) ) )
+            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"))
+        ))
     }
 
     it should "identify dirty set for fbu updates" in {
         postCountInUserRule.dirtiedSet( fbuUserLiz ) should be ( Set(IdLocation(users,"liz")) )
         postCountInUserRule.dirtiedSet( fbuPost1 ) should be ( Set(
-            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"),
-            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId") ) ) )
+            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"))
+        ))
     }
 
     it should "identify dirty set for delete" in {
         postCountInUserRule.dirtiedSet( deleteUserLiz ) should be ( Set(IdLocation(users,"liz")) ) // TODO: optimize me
         postCountInUserRule.dirtiedSet( deletePost1 ) should be ( Set(
-            QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"),
-            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId") ) ) )
+            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"))
+        ))
     }
 
 /*
