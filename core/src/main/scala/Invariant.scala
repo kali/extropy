@@ -54,29 +54,30 @@ object InvariantStatus extends Enumeration {
 
 case class MonitoredField(container:Container, field:String) {
 
-    def monitor(op:Change):Set[ResolvedLocation] =
+    def monitor(op:Change):Set[ResolvedLocation] = container.monitor(field, op)
+/*
         if(container.collection == op.writtenCollection)
             op match {
                 case InsertChange(writtenCollection, document) => container match {
-                    case CollectionContainer(collection) =>
+                    case TopLevelContainer(collection) =>
                         if(document.containsField(field))
-                            Set(DocumentLocation(CollectionContainer(collection), document))
+                            Set(DocumentLocation(TopLevelContainer(collection), document))
                         else
                             Set()
                 }
                 case DeleteChange(writtenCollection, selector) =>
-                    Set(SelectorLocation.make(CollectionContainer(writtenCollection), selector))
+                    Set(SelectorLocation.make(TopLevelContainer(writtenCollection), selector))
                 case muc @ ModifiersUpdateChange(writtenCollection, selector, update) =>
                     if(muc.impactedFields.contains(field))
-                        Set(SelectorLocation.make(CollectionContainer(writtenCollection), selector))
+                        Set(SelectorLocation.make(TopLevelContainer(writtenCollection), selector))
                     else
                         Set()
                 case FullBodyUpdateChange(writtenCollection, selector, update) =>
-                    Set(SelectorLocation.make(CollectionContainer(writtenCollection), selector))
+                    Set(SelectorLocation.make(TopLevelContainer(writtenCollection), selector))
             }
         else
             Set()
-
+*/
 }
 
 case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie, reaction:Reaction) {
@@ -130,16 +131,12 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
 
 @Salat
 abstract class Container {
-    def collection:String
-    def dbName:String
-    def collectionName:String
-
     def asLocation:ResolvedLocation
-
+    def monitor(field:String, op:Change):Set[ResolvedLocation]
     def toLabel:String
 }
 
-case class CollectionContainer(collectionFullName:String) extends Container {
+case class TopLevelContainer(collectionFullName:String) extends Container {
     val dbName = collectionFullName.split('.').head
     val collectionName = collectionFullName.split('.').drop(1).mkString(".")
 
@@ -147,22 +144,41 @@ case class CollectionContainer(collectionFullName:String) extends Container {
 
     def asLocation = SelectorLocation(this, MongoDBObject.empty)
 
+    def monitor(field:String, op:Change) = {
+        if(collectionFullName == op.writtenCollection)
+            op match {
+                case InsertChange(writtenCollection, document) =>
+                    if(document.containsField(field))
+                        Set(DocumentLocation(this, document))
+                    else
+                        Set()
+                case DeleteChange(writtenCollection, selector) =>
+                    Set(SelectorLocation.make(this, selector))
+                case muc @ ModifiersUpdateChange(writtenCollection, selector, update) =>
+                    if(muc.impactedFields.contains(field))
+                        Set(SelectorLocation.make(this, selector))
+                    else
+                        Set()
+                case FullBodyUpdateChange(writtenCollection, selector, update) =>
+                    Set(SelectorLocation.make(this, selector))
+            }
+        else
+            Set()
+    }
+
     def toLabel = s"<i>$collectionFullName</i>"
     override def toString = collectionFullName
 }
 
-case class SubCollectionContainer(collectionFullName:String, arrayField:String) extends Container {
-    val dbName = collectionFullName.split('.').head
-    val collectionName = collectionFullName.split('.').drop(1).mkString(".")
-
+case class NestedContainer(parent:Container, arrayField:String) extends Container {
     def asLocation = null
-    def collection:String = collectionFullName
+    def monitor(field:String, op:Change) = parent.monitor(arrayField, op)
     def setValues(payloadMongo:MongoClient, location:Location, values:BSONObject) {}
-    def toLabel = s"<i>$collectionFullName.$arrayField</i>"
+    def toLabel = s"<i>$parent.$arrayField</i>"
 }
 
 // LOCATIONS
-abstract class Location {
+sealed abstract class Location {
     def container:Container
 }
 sealed trait ResolvableLocation extends Location {
@@ -177,7 +193,7 @@ sealed trait DataLocation extends ResolvedLocation {
     def data:BSONObject
 }
 sealed abstract class TopLevelLocation extends Location {
-    override def container:CollectionContainer
+    override def container:TopLevelContainer
 }
 sealed trait TopLevelResolvedLocation extends TopLevelLocation with ResolvedLocation {
     def selector:BSONObject
@@ -195,17 +211,17 @@ sealed trait TopLevelResolvedLocation extends TopLevelLocation with ResolvedLoca
         }
     }
 }
-trait HaveIdLocation extends Location {
+trait HaveIdLocation extends ResolvableLocation {
     def id:AnyRef
 }
-case class DocumentLocation(container:CollectionContainer, data:BSONObject) extends TopLevelResolvedLocation
+case class DocumentLocation(container:TopLevelContainer, data:BSONObject) extends TopLevelResolvedLocation
         with DataLocation with HaveIdLocation {
     def id = data.getAs[AnyRef]("_id").get
     def selector = MongoDBObject("_id" -> id)
 }
-case class SelectorLocation(container:CollectionContainer, selector:BSONObject) extends TopLevelResolvedLocation
+case class SelectorLocation(container:TopLevelContainer, selector:BSONObject) extends TopLevelResolvedLocation
 object SelectorLocation {
-    def make(container:CollectionContainer, selector:BSONObject) =
+    def make(container:TopLevelContainer, selector:BSONObject) =
         if(selector.size == 1 && selector.keys.head == "_id" &&
             !selector.values.head.isInstanceOf[BSONObject] &&
             !selector.values.head.isInstanceOf[java.util.regex.Pattern])
@@ -217,16 +233,16 @@ object SelectorLocation {
         else
             new SelectorLocation(container, selector)
 }
-case class SimpleFilterLocation(container:CollectionContainer, field:String, value:AnyRef)
+case class SimpleFilterLocation(container:TopLevelContainer, field:String, value:AnyRef)
         extends TopLevelResolvedLocation {
     def selector = MongoDBObject(field -> value)
 }
-case class IdLocation(container:CollectionContainer, id:AnyRef)
+case class IdLocation(container:TopLevelContainer, id:AnyRef)
         extends TopLevelResolvedLocation with HaveIdLocation {
     def selector = MongoDBObject("_id" -> id)
 }
 
-case class QueryLocation(container:CollectionContainer, location:TopLevelResolvedLocation, field:String)
+case class QueryLocation(container:TopLevelContainer, location:TopLevelResolvedLocation, field:String)
         extends TopLevelLocation with ResolvableLocation {
     def resolve(mongo:MongoClient):Traversable[ResolvedLocation] = {
         location.iterator(mongo).flatMap( doc => doc.data.getAs[AnyRef](field).map(IdLocation(container,_)) )
@@ -235,6 +251,8 @@ case class QueryLocation(container:CollectionContainer, location:TopLevelResolve
 case class ShakyLocation(query:ResolvableLocation) extends Location {
     def container = query.container
     def save(mongo:MongoClient):Traversable[ResolvableLocation] = query.resolve(mongo) ++ Traversable(query)
+}
+case class NestedLocation(container:NestedContainer, parent:Location) extends Location {
 }
 
 // TIE
@@ -265,17 +283,17 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
     val reactionContainerMonitoredFields:Set[String] = Set()
 
     def propagate(rule:Rule, from:ResolvedLocation) = from match {
-        case data:DataLocation => IdLocation(rule.reactionContainer.asInstanceOf[CollectionContainer],
+        case data:DataLocation => IdLocation(rule.reactionContainer.asInstanceOf[TopLevelContainer],
                                         data.data.getAs[AnyRef](localFieldName).get)
-        case tld:TopLevelResolvedLocation => QueryLocation(rule.reactionContainer.asInstanceOf[CollectionContainer],
+        case tld:TopLevelResolvedLocation => QueryLocation(rule.reactionContainer.asInstanceOf[TopLevelContainer],
                                                 tld, localFieldName)
     }
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location] = rule.effectContainer match {
-        case cc:CollectionContainer => location match {
+        case cc:TopLevelContainer => location match {
             case hil:HaveIdLocation => Some(SimpleFilterLocation(cc, localFieldName, hil.id))
             case tld:TopLevelResolvedLocation => Some(QueryLocation(cc, tld, "_id"))
         }
-        case SubCollectionContainer(_,field) => null
+        case NestedContainer(_,field) => null
     }
     def toLabel = s"following <i>$localFieldName</i> to"
 }
@@ -284,16 +302,16 @@ case class ReverseKeyTie(reactionFieldName:String) extends Tie {
     val effectContainerMonitoredFields:Set[String] = Set("_id")
     val reactionContainerMonitoredFields = Set(reactionFieldName)
     def propagate(rule:Rule, from:ResolvedLocation) = rule.reactionContainer match {
-        case cc:CollectionContainer => from match {
+        case cc:TopLevelContainer => from match {
             case hil:HaveIdLocation => SimpleFilterLocation(cc, reactionFieldName, hil.id)
             case tld:TopLevelResolvedLocation => QueryLocation(cc, tld, "_id")
         }
-        case SubCollectionContainer(collection, field) => null
+        case NestedContainer(collection, field) => null
     }
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location] = {
         val q = location match {
             case sel:TopLevelResolvedLocation =>
-                QueryLocation(rule.effectContainer.asInstanceOf[CollectionContainer], sel, reactionFieldName)
+                QueryLocation(rule.effectContainer.asInstanceOf[TopLevelContainer], sel, reactionFieldName)
         }
         Traversable(ShakyLocation(q))
     }
@@ -336,7 +354,7 @@ case class StringNormalizationReaction(from:String, to:String) extends Reaction 
 
 object StringNormalizationRule {
     def apply(collection:String, from:String, to:String) =
-        Rule(CollectionContainer(collection), CollectionContainer(collection), SameDocumentTie(),
+        Rule(TopLevelContainer(collection), TopLevelContainer(collection), SameDocumentTie(),
                 StringNormalizationReaction(from,to))
 }
 

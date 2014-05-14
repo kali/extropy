@@ -21,11 +21,11 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         mongoBackendClient(dbName)("users").insert(userLiz, userJack, userCatLady)
         IdLocation(posts,"post1").resolve(mongoBackendClient) should be( Iterable(IdLocation(posts,"post1")) )
         DocumentLocation(users,userLiz).resolve(mongoBackendClient) should be( Iterable(DocumentLocation(users,userLiz)) )
-        QueryLocation(CollectionContainer(s"$dbName.users"), IdLocation(posts,"post1"), "authorId").resolve(mongoBackendClient) should be(
+        QueryLocation(TopLevelContainer(s"$dbName.users"), IdLocation(posts,"post1"), "authorId").resolve(mongoBackendClient) should be(
             Traversable(IdLocation(users,"liz"))
         )
 /*
-        QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post2"), "authorId").expand(mongoBackendClient) should be(
+        QueryLocation(SubTopLevelContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post2"), "authorId").expand(mongoBackendClient) should be(
             Iterable(IdLocation(users,"jack"))
         )
         an[Exception] should be thrownBy {
@@ -39,12 +39,12 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         mongoBackendClient(dbName)("posts").insert(post1, post2)
         mongoBackendClient(dbName)("users").insert(userLiz, userJack, userCatLady)
 /*
-        QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId").snapshot(mongoBackendClient) should be(
-            Iterable(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"))
+        QueryLocation(TopLevelContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId").snapshot(mongoBackendClient) should be(
+            Iterable(QueryLocation(TopLevelContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"))
         )
 */
 /*
-        SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId") ).
+        SnapshotLocation(QueryLocation(TopLevelContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId") ).
             snapshot(mongoBackendClient) should be( Iterable( IdLocation(users,"liz") ) )
 */
     }

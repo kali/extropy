@@ -34,7 +34,7 @@ class InvariantSpec extends FlatSpec with Matchers {
     it should "resolve id locations" in {
         searchableTitleRule.tie.propagate(searchableTitleRule, IdLocation(posts,"post1")) should be( IdLocation(posts,"post1") )
         authorNameInPostRule.tie.propagate(authorNameInPostRule, IdLocation(posts,"post1")) should be(
-            QueryLocation(CollectionContainer(s"$dbName.users"), IdLocation(posts,"post1"), "authorId")
+            QueryLocation(users, IdLocation(posts,"post1"), "authorId")
         )
         postCountInUserRule.tie.propagate(postCountInUserRule, IdLocation(users,"liz")) should be( SimpleFilterLocation(posts,"authorId", "liz") )
 /*
@@ -170,7 +170,7 @@ class InvariantSpec extends FlatSpec with Matchers {
         postCountInUserRule.dirtiedSet( insertUserLiz ) should be ( Set(DocumentLocation(users,userLiz)) )
         postCountInUserRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
         postCountInUserRule.dirtiedSet( insertPost1 ) should be ( Set(
-            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.users"), DocumentLocation(posts,post1), "authorId"))
+            ShakyLocation(QueryLocation(users, DocumentLocation(posts,post1), "authorId"))
         ))
     }
 
@@ -179,60 +179,57 @@ class InvariantSpec extends FlatSpec with Matchers {
         postCountInUserRule.dirtiedSet( setNameOnUserLiz ) should be( 'empty )
         postCountInUserRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
         postCountInUserRule.dirtiedSet( setAuthorIdOnPost1 ) should be( Set(
-            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.users"), IdLocation(posts,"post1"), "authorId"))
+            ShakyLocation(QueryLocation(users, IdLocation(posts,"post1"), "authorId"))
         ))
     }
 
     it should "identify dirty set for fbu updates" in {
         postCountInUserRule.dirtiedSet( fbuUserLiz ) should be ( Set(IdLocation(users,"liz")) )
         postCountInUserRule.dirtiedSet( fbuPost1 ) should be ( Set(
-            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.users"), IdLocation(posts,"post1"), "authorId"))
+            ShakyLocation(QueryLocation(users, IdLocation(posts,"post1"), "authorId"))
         ))
     }
 
     it should "identify dirty set for delete" in {
         postCountInUserRule.dirtiedSet( deleteUserLiz ) should be ( Set(IdLocation(users,"liz")) ) // TODO: optimize me
         postCountInUserRule.dirtiedSet( deletePost1 ) should be ( Set(
-            ShakyLocation(QueryLocation(CollectionContainer(s"$dbName.users"), IdLocation(posts,"post1"), "authorId"))
+            ShakyLocation(QueryLocation(users, IdLocation(posts,"post1"), "authorId"))
         ))
     }
 
-/*
     behavior of "a commentCountInUserRule rule"
 
     it should "identify dirty set for inserts" in {
-pending
         commentCountInUserRule.dirtiedSet( insertUserLiz ) should be ( Set(DocumentLocation(users,userLiz)) )
         commentCountInUserRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
         commentCountInUserRule.dirtiedSet( insertPost1 ) should be ( 'empty )
         commentCountInUserRule.dirtiedSet( insertPost2 ) should be ( Set(
-            QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post2"), "authorId"),
-            SnapshotLocation(QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post2"), "authorId") ) ) )
+            ShakyLocation(QueryLocation(users, NestedLocation(DocumentLocation(posts,post2), "comments"), "authorId"))
+        ))
     }
 
     it should "identify dirty set for modifiers updates" in {
         commentCountInUserRule.dirtiedSet( setTitleOnPost1 ) should be( 'empty )
         commentCountInUserRule.dirtiedSet( setNameOnUserLiz ) should be( 'empty )
         commentCountInUserRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
-        commentCountInUserRule.dirtiedSet( setAuthorIdOnPost1 ) should be( Set(
-            QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId"),
-            SnapshotLocation(QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId") ) ) )
+        commentCountInUserRule.dirtiedSet( setAuthorIdOnPost1 ) should be( 'empty )
     }
 
     it should "identify dirty set for fbu updates" in {
         commentCountInUserRule.dirtiedSet( fbuUserLiz ) should be ( Set(IdLocation(users,"liz")) )
         commentCountInUserRule.dirtiedSet( fbuPost1 ) should be ( Set(
-            QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId"),
-            SnapshotLocation(QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId") ) ) )
+            ShakyLocation(QueryLocation(users, IdLocation(posts,"post1"), "authorId"))
+        ))
     }
 
     it should "identify dirty set for delete" in {
         commentCountInUserRule.dirtiedSet( deleteUserLiz ) should be ( Set(IdLocation(users,"liz")) ) // TODO: optimize me
         commentCountInUserRule.dirtiedSet( deletePost1 ) should be ( Set(
-            QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId"),
-            SnapshotLocation(QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId") ) ) )
+            ShakyLocation(QueryLocation(users, IdLocation(posts,"post1"), "authorId"))
+        ))
     }
 
+/*
     behavior of "a authorNameInComment rule"
 
     it should "identify dirty set for inserts" taggedAs(Tag("c")) in {

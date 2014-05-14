@@ -9,8 +9,9 @@ posts: ( _id, authorId, authorName*, title, searchableTitle*, comments[ { author
 
 case class BlogFixtures(dbName:String) {
 
-    val posts = CollectionContainer(s"$dbName.posts")
-    val users = CollectionContainer(s"$dbName.users")
+    val users = TopLevelContainer(s"$dbName.users")
+    val posts = TopLevelContainer(s"$dbName.posts")
+    val comments = NestedContainer(posts, "comments")
 
     // some rules
     val searchableTitleRule = Rule(     posts, posts,
@@ -23,10 +24,10 @@ case class BlogFixtures(dbName:String) {
                                         ReverseKeyTie("authorId"), CountReaction("postCount"))
 
 
-    val commentCountInUserRule = Rule(  users, SubCollectionContainer(s"$dbName.posts", "comments"),
+    val commentCountInUserRule = Rule(  users, comments,
                                         ReverseKeyTie("authorId"), CountReaction("commentCount"))
 
-    val authorNameInCommentRule = Rule( SubCollectionContainer(s"$dbName.posts","comments"), users,
+    val authorNameInCommentRule = Rule( comments, users,
                                         FollowKeyTie("authorId"), CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
     // FIXME: commentCountInPostRule
@@ -38,7 +39,7 @@ case class BlogFixtures(dbName:String) {
     val monitorUsersName = MonitoredField(users, "name")
     val monitorPostsTitle = MonitoredField(posts, "title")
     val monitorPostsAuthorId = MonitoredField(posts, "authorId")
-    val monitorPostsCommentsAuthorId = MonitoredField(SubCollectionContainer(s"$dbName.posts", "comments"), "authorId")
+    val monitorPostsCommentsAuthorId = MonitoredField(NestedContainer(posts, "comments"), "authorId")
 
     // some data
     val userLiz = MongoDBObject("_id" -> "liz", "name" -> "Elizabeth Lemon")
