@@ -37,29 +37,6 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         QueryLocation(TopLevelContainer(s"$dbName.users"), IdLocation(posts,"post1"), "authorId").resolve(mongoBackendClient) should be(
             Traversable(IdLocation(users,"liz"))
         )
-/*
-        QueryLocation(SubTopLevelContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post2"), "authorId").expand(mongoBackendClient) should be(
-            Iterable(IdLocation(users,"jack"))
-        )
-        an[Exception] should be thrownBy {
-            SnapshotLocation(QueryLocation(CollectionContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId") ).expand(mongoBackendClient)
-        }
-*/
-    }
-
-    it should "snaphost relevant information" in {
-        mongoBackendClient(dbName).dropDatabase
-        mongoBackendClient(dbName)("posts").insert(post1, post2)
-        mongoBackendClient(dbName)("users").insert(userLiz, userJack, userCatLady)
-/*
-        QueryLocation(TopLevelContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId").snapshot(mongoBackendClient) should be(
-            Iterable(QueryLocation(TopLevelContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId"))
-        )
-*/
-/*
-        SnapshotLocation(QueryLocation(TopLevelContainer(s"$dbName.posts"), IdLocation(posts,"post1"), "authorId") ).
-            snapshot(mongoBackendClient) should be( Iterable( IdLocation(users,"liz") ) )
-*/
     }
 
     behavior of "fix one..."
@@ -111,6 +88,13 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         mongoBackendClient(dbName)("posts").findOne(MongoDBObject("_id" -> "post2")).get.getAs[List[DBObject]]("comments").get should be(
             List(comment1 ++ ("authorName" -> """John Francis "Jack" Donaghy"""))
         )
+    }
+
+    it should "fixOne commentCountInPostRule" in {
+        mongoBackendClient(dbName).dropDatabase
+        mongoBackendClient(dbName)("posts").insert(post2)
+        commentCountInPostRule.fixOne(mongoBackendClient, IdLocation(posts, "post2"))
+        mongoBackendClient(dbName)("posts").findOne(MongoDBObject("_id" -> "post2")).get.getAs[Int]("commentCount").get should be(1)
     }
 
     behavior of "fix all..."
@@ -171,6 +155,13 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         )
     }
 
+    it should "fix all commentCountInPostRule" in {
+        mongoBackendClient(dbName).dropDatabase
+        mongoBackendClient(dbName)("posts").insert(post2, post1)
+        commentCountInPostRule.fixAll(mongoBackendClient)
+        mongoBackendClient(dbName)("posts").findOne(MongoDBObject("_id" -> "post2")).get.getAs[Int]("commentCount").get should be(1)
+    }
+
     behavior of "check all..."
 
     it should "check all searchableTitle" in {
@@ -229,6 +220,17 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
 
         authorNameInCommentRule.fixAll(mongoBackendClient)
         errors = authorNameInCommentRule.checkAll(mongoBackendClient)
+        errors should have size(0)
+    }
+
+    it should "check all commentCountInPostRule" in {
+        mongoBackendClient(dbName).dropDatabase
+        mongoBackendClient(dbName)("posts").insert(post2, post1)
+        var errors = commentCountInPostRule.checkAll(mongoBackendClient)
+        errors should have size(2)
+
+        commentCountInPostRule.fixAll(mongoBackendClient)
+        errors = commentCountInPostRule.checkAll(mongoBackendClient)
         errors should have size(0)
     }
 }

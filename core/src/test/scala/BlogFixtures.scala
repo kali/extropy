@@ -17,22 +17,21 @@ case class BlogFixtures(dbName:String) {
     val searchableTitleRule = Rule(     posts, posts,
                                         SameDocumentTie(), StringNormalizationReaction("title", "searchableTitle"))
 
-    val authorNameInPostRule = Rule(    posts, users,
-                                        FollowKeyTie("authorId"), CopyFieldsReaction(List(CopyField("name", "authorName"))))
+    val authorNameInPostRule = Rule(    posts, users, FollowKeyTie("authorId"),
+                                        CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
-    val postCountInUserRule = Rule(     users, posts,
-                                        ReverseKeyTie("authorId"), CountReaction("postCount"))
+    val postCountInUserRule = Rule(     users, posts, ReverseKeyTie("authorId"), CountReaction("postCount"))
 
 
-    val commentCountInUserRule = Rule(  users, comments,
-                                        ReverseKeyTie("authorId"), CountReaction("commentCount"))
+    val commentCountInUserRule = Rule(  users, comments, ReverseKeyTie("authorId"), CountReaction("commentCount"))
 
-    val authorNameInCommentRule = Rule( comments, users,
-                                        FollowKeyTie("authorId"), CopyFieldsReaction(List(CopyField("name", "authorName"))))
+    val authorNameInCommentRule = Rule( comments, users, FollowKeyTie("authorId"),
+                                        CopyFieldsReaction(List(CopyField("name", "authorName"))))
 
-    // FIXME: commentCountInPostRule
+    val commentCountInPostRule = Rule(  posts, comments, SubDocumentTie("comments"), CountReaction("commentCount") )
 
-    val allRules = Array( searchableTitleRule, authorNameInPostRule, postCountInUserRule, commentCountInUserRule, authorNameInCommentRule)
+    val allRules = Array( searchableTitleRule, authorNameInPostRule, postCountInUserRule,
+        commentCountInUserRule, authorNameInCommentRule, commentCountInPostRule)
 
     // some monitored fields
     val monitorUsersId = MonitoredField(users, "_id") // id can not change, but this allow to detect insertion of users

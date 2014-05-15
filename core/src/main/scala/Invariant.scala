@@ -182,11 +182,8 @@ sealed trait ResolvedLocation extends Location with ResolvableLocation {
     def setValues(payloadMongo:MongoClient, values:BSONObject)
     def resolve(payloadMongo:MongoClient) = Traversable(this)
 }
-sealed trait DatasLocation extends ResolvedLocation {
-    def datas:Traversable[BSONObject]
-}
-sealed trait DataLocation extends DatasLocation {
-    def data:BSONObject = datas.head
+sealed trait DataLocation extends ResolvedLocation {
+    def data:BSONObject
 }
 sealed abstract class TopLevelLocation extends Location {
     override def container:TopLevelContainer
@@ -257,12 +254,18 @@ case object AnySubDocumentLocationFilter extends SubDocumentLocationFilter {
     def apply(dbo:BSONObject) = true
 }
 case class NestedDocumentLocation(container:NestedContainer, dbo:BSONObject, filter:SubDocumentLocationFilter)
-        extends NestedLocation with DataLocation {
+        extends NestedLocation with ResolvedLocation {
     def datas = dbo.getAs[List[BSONObject]](container.arrayField).getOrElse(List()).filter( filter.apply(_) )
-    def iterator(payloadMongo:MongoClient) = Traversable(this)
+    def iterator(payloadMongo:MongoClient) = datas.toTraversable.map{ sub => NestedDataDocumentLocation(container, dbo, sub) }
     def setValues(payloadMongo:MongoClient, values:BSONObject) {
         NestedHelpers.setValues(payloadMongo,container,MongoDBObject("_id" -> dbo.getAs[AnyRef]("_id")),filter,values)
     }
+}
+case class NestedDataDocumentLocation(container:NestedContainer, dbo:BSONObject, data:BSONObject)
+        extends NestedLocation with DataLocation with ResolvedLocation {
+    def iterator(payloadMongo:MongoClient) = Traversable(this)
+    def setValues(payloadMongo:MongoClient, values:BSONObject) = NestedHelpers.setValues(payloadMongo, container,
+        MongoDBObject("_id" -> dbo.getAs[AnyRef]("_id")),IdSubDocumentLocationFilter(data.getAs[AnyRef]("_id")), values)
 }
 object NestedHelpers {
     def iteratorOnId(payloadMongo:MongoClient,container:NestedContainer, find:MongoDBObject,
@@ -274,9 +277,11 @@ object NestedHelpers {
                     .map { sub => (dbo, sub.getAs[AnyRef]("_id").get) }
             }.toTraversable
     def iterator(payloadMongo:MongoClient,container:NestedContainer, find:MongoDBObject,
-            filter:SubDocumentLocationFilter):Traversable[NestedDocumentLocation] =
+            filter:SubDocumentLocationFilter):Traversable[DataLocation] =
         iteratorOnId(payloadMongo, container, find, filter).map { case(dbo,id) =>
-            NestedDocumentLocation(container, dbo, IdSubDocumentLocationFilter(id))
+            new NestedDocumentLocation(container, dbo, IdSubDocumentLocationFilter(id)) with DataLocation {
+                def data = dbo.getAs[List[BSONObject]](container.arrayField).get.filter( filter ).head
+            }
         }
     def setValues(payloadMongo:MongoClient,container:NestedContainer,find:MongoDBObject,filter:SubDocumentLocationFilter,
             values:BSONObject) {
@@ -293,7 +298,7 @@ object NestedHelpers {
 }
 case class NestedIdLocation(container:NestedContainer, id:AnyRef, filter:SubDocumentLocationFilter)
     extends NestedLocation with ResolvedLocation {
-    def iterator(payloadMongo:MongoClient):Traversable[NestedDocumentLocation] =
+    def iterator(payloadMongo:MongoClient):Traversable[DataLocation] =
         NestedHelpers.iterator(payloadMongo, container, MongoDBObject("_id" -> id), filter)
     def setValues(payloadMongo:MongoClient, values:BSONObject) {
         NestedHelpers.setValues(payloadMongo, container, MongoDBObject("_id" -> id), filter, values)
@@ -391,6 +396,27 @@ case class ReverseKeyTie(reactionFieldName:String) extends Tie {
         Traversable(ShakyLocation(q))
     }
     def toLabel = s"searching by <i>$reactionFieldName</i> in"
+}
+
+case class SubDocumentTie(fieldName:String) extends Tie {
+    val effectContainerMonitoredFields:Set[String] = Set()
+    val reactionContainerMonitoredFields = Set(fieldName)
+    def propagate(rule:Rule, location:ResolvedLocation) = location.asInstanceOf[TopLevelLocation] match {
+        case d:DataLocation => NestedDocumentLocation(rule.reactionContainer.asInstanceOf[NestedContainer],
+                                                    d.data, AnySubDocumentLocationFilter)
+        case id:HaveIdLocation => NestedIdLocation(rule.reactionContainer.asInstanceOf[NestedContainer],
+                                                    id.id, AnySubDocumentLocationFilter)
+        case tlr:TopLevelResolvedLocation => SelectorNestedLocation(rule.reactionContainer.asInstanceOf[NestedContainer],
+                                                    tlr.selector, AnySubDocumentLocationFilter)
+    }
+    def backPropagate(rule:Rule, location:ResolvedLocation) = location.asInstanceOf[NestedLocation] match {
+        case NestedDocumentLocation(_, data, _) => Some(DocumentLocation(rule.effectContainer.asInstanceOf[TopLevelContainer], data))
+        case NestedDataDocumentLocation(_, data, _) => Some(DocumentLocation(rule.effectContainer.asInstanceOf[TopLevelContainer], data))
+        case NestedIdLocation(_, id, _) => Some(IdLocation(rule.effectContainer.asInstanceOf[TopLevelContainer], id))
+        case SelectorNestedLocation(_, sel, _) => Some(SelectorLocation(rule.effectContainer.asInstanceOf[TopLevelContainer], sel))
+        case SimpleNestedLocation(_, k, v) => Some(SimpleFilterLocation(rule.effectContainer.asInstanceOf[TopLevelContainer], k, v))
+    }
+    def toLabel = s"entering <i>$fieldName</i>"
 }
 
 // REACTION
