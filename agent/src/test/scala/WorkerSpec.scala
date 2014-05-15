@@ -22,7 +22,7 @@ object RemoteControlLatch {
 
 object RemoteControledSyncRule {
     def apply(col:String) =
-        Rule(CollectionContainer(col), CollectionContainer(col), SameDocumentTie(),
+        Rule(TopLevelContainer(col), TopLevelContainer(col), SameDocumentTie(),
                 RemoteControlledStringNormalizationReaction("foo", "bar"))
 }
 

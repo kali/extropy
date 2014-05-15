@@ -8,10 +8,23 @@ import org.zoy.kali.extropy._
 
 import com.mongodb.casbah.Imports._
 
+import mongoutils.BSONObjectConversions._
+
 class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
 
     val fixture = BlogFixtures(s"extropy-spec-${System.currentTimeMillis}")
     import fixture._
+
+    behavior of "containers (with mongo)"
+
+    it should "iterate" in {
+        mongoBackendClient(dbName).dropDatabase
+        mongoBackendClient(dbName)("posts").insert(post1, post2)
+        mongoBackendClient(dbName)("users").insert(userLiz, userJack, userCatLady)
+        users.asLocation.iterator(mongoBackendClient).size should be(3)
+        posts.asLocation.iterator(mongoBackendClient).size should be(2)
+        comments.asLocation.iterator(mongoBackendClient).size should be(1)
+    }
 
     behavior of "location interaction with mongo"
 
@@ -81,13 +94,22 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
     }
 
     it should "fixOne commentCountInUserRule" in {
-        pending
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post2)
         mongoBackendClient(dbName)("users").insert(userJack)
         commentCountInUserRule.fixOne(mongoBackendClient, IdLocation(users,"jack"))
         mongoBackendClient(dbName)("users").findOne(MongoDBObject("_id" -> "jack")) should be(
             Some(userJack ++ ("commentCount" -> 1))
+        )
+    }
+
+    it should "fixOne authorNameInCommentRule" in {
+        mongoBackendClient(dbName).dropDatabase
+        mongoBackendClient(dbName)("posts").insert(post2)
+        mongoBackendClient(dbName)("users").insert(userJack)
+        authorNameInCommentRule.fixOne(mongoBackendClient, NestedIdLocation(comments,"post2",IdSubDocumentLocationFilter("comment1")))
+        mongoBackendClient(dbName)("posts").findOne(MongoDBObject("_id" -> "post2")).get.getAs[List[DBObject]]("comments").get should be(
+            List(comment1 ++ ("authorName" -> """John Francis "Jack" Donaghy"""))
         )
     }
 
@@ -126,8 +148,7 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         )
     }
 
-    it should "fixOne commentCountInUserRule" in {
-pending
+    it should "fix all commentCountInUserRule" in {
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post2, post1)
         mongoBackendClient(dbName)("users").insert(userJack, userLiz)
@@ -137,6 +158,16 @@ pending
         )
         mongoBackendClient(dbName)("users").findOne(MongoDBObject("_id" -> "jack")) should be(
             Some(userJack ++ ("commentCount" -> 1))
+        )
+    }
+
+    it should "fix all authorNameInCommentRule" in {
+        mongoBackendClient(dbName).dropDatabase
+        mongoBackendClient(dbName)("posts").insert(post2, post1)
+        mongoBackendClient(dbName)("users").insert(userJack, userLiz)
+        authorNameInCommentRule.fixAll(mongoBackendClient)
+        mongoBackendClient(dbName)("posts").findOne(MongoDBObject("_id" -> "post2")).get.getAs[List[DBObject]]("comments").get should be(
+            List(comment1 ++ ("authorName" -> """John Francis "Jack" Donaghy"""))
         )
     }
 
@@ -177,8 +208,7 @@ pending
         errors should have size(0)
     }
 
-    it should "fixOne commentCountInUserRule" in {
-pending
+    it should "check all commentCountInUserRule" in {
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post2, post1)
         mongoBackendClient(dbName)("users").insert(userJack, userLiz)
@@ -187,6 +217,18 @@ pending
 
         commentCountInUserRule.fixAll(mongoBackendClient)
         errors = commentCountInUserRule.checkAll(mongoBackendClient)
+        errors should have size(0)
+    }
+
+    it should "check all authorNameInCommentRule" in {
+        mongoBackendClient(dbName).dropDatabase
+        mongoBackendClient(dbName)("posts").insert(post2, post1)
+        mongoBackendClient(dbName)("users").insert(userJack, userLiz)
+        var errors = authorNameInCommentRule.checkAll(mongoBackendClient)
+        errors should have size(1)
+
+        authorNameInCommentRule.fixAll(mongoBackendClient)
+        errors = authorNameInCommentRule.checkAll(mongoBackendClient)
         errors should have size(0)
     }
 }
