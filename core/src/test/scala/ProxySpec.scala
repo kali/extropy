@@ -41,6 +41,10 @@ class ProxySpec extends FlatSpec with Matchers with BeforeAndAfterAll with Extro
         allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
         proxy.doChange(fbuPost1)
         allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+        proxy.doChange(setAuthorIdOnComment1)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+        proxy.doChange(setAuthorIdOnCommentsNestedSel)
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
     }
 
     it should "deal with deletes" in withExtropyAndBlog { (extropy, fixture) =>

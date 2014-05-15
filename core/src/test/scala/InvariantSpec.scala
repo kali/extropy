@@ -8,6 +8,8 @@ import org.zoy.kali.extropy._
 
 import com.mongodb.casbah.Imports._
 
+import mongoutils.BSONObjectConversions._
+
 class InvariantSpec extends FlatSpec with Matchers {
 
     val fixture = BlogFixtures(s"extropy-spec-${System.currentTimeMillis}")
@@ -16,32 +18,41 @@ class InvariantSpec extends FlatSpec with Matchers {
     behavior of "Ties"
 
     it should "resolve document locations" in {
-        searchableTitleRule.tie.propagate(searchableTitleRule, DocumentLocation(posts,post1)) should be( DocumentLocation(posts,post1) )
-        authorNameInPostRule.tie.propagate(authorNameInPostRule, DocumentLocation(posts,post1)) should be( IdLocation(users,"liz") )
-        postCountInUserRule.tie.propagate(postCountInUserRule, DocumentLocation(users,userLiz)) should be( SimpleFilterLocation(posts,"authorId", "liz") )
-/*
-        commentCountInUserRule.tie.resolve(commentCountInUserRule, DocumentLocation(users,userJack)) should be(
-            SubDocumentLocation(SimpleFilterLocation("comments.authorId", "jack"), SimpleFilterLocation(posts,"authorId", "jack"))
+        searchableTitleRule.tie.propagate(searchableTitleRule, DocumentLocation(posts,post1)) should be(
+            DocumentLocation(posts,post1)
         )
-*/
-/*
-        authorNameInCommentRule.tie.resolve(authorNameInCommentRule, SubDocumentLocation(DocumentLocation(posts,post2), DocumentLocation(comment1))) should be(
-            IdLocation(users,"jack")
+        authorNameInPostRule.tie.propagate(authorNameInPostRule, DocumentLocation(posts,post1)) should be(
+            IdLocation(users,"liz")
         )
-*/
+        postCountInUserRule.tie.propagate(postCountInUserRule, DocumentLocation(users,userLiz)) should be(
+            SimpleFilterLocation(posts,"authorId", "liz")
+        )
+        commentCountInUserRule.tie.propagate(commentCountInUserRule, DocumentLocation(users,userJack)) should be(
+            SimpleNestedLocation(comments, "authorId", "jack")
+        )
+        authorNameInCommentRule.tie.propagate(authorNameInCommentRule,
+            NestedDocumentLocation(comments, post2, IdSubDocumentLocationFilter("comment1"))) should be(
+                IdLocation(users,"jack")
+        )
     }
 
     it should "resolve id locations" in {
-        searchableTitleRule.tie.propagate(searchableTitleRule, IdLocation(posts,"post1")) should be( IdLocation(posts,"post1") )
+        searchableTitleRule.tie.propagate(searchableTitleRule, IdLocation(posts,"post1")) should be(
+            IdLocation(posts,"post1")
+        )
         authorNameInPostRule.tie.propagate(authorNameInPostRule, IdLocation(posts,"post1")) should be(
             QueryLocation(users, IdLocation(posts,"post1"), "authorId")
         )
-        postCountInUserRule.tie.propagate(postCountInUserRule, IdLocation(users,"liz")) should be( SimpleFilterLocation(posts,"authorId", "liz") )
-/*
-        commentCountInUserRule.tie.resolve(commentCountInUserRule, IdLocation(users,"jack")) should be(
-            SubDocumentLocation(SimpleFilterLocation("comments.authorId", "jack"), SimpleFilterLocation(posts,"authorId", "jack"))
+        postCountInUserRule.tie.propagate(postCountInUserRule, IdLocation(users,"liz")) should be(
+            SimpleFilterLocation(posts,"authorId", "liz")
         )
-*/
+        commentCountInUserRule.tie.propagate(commentCountInUserRule, IdLocation(users,"jack")) should be(
+            SimpleNestedLocation(comments, "authorId", "jack")
+        )
+        authorNameInCommentRule.tie.propagate(authorNameInPostRule,
+                NestedIdLocation(comments, "post1", IdSubDocumentLocationFilter("comment1"))) should be(
+            QueryLocation(users, NestedIdLocation(comments, "post1", IdSubDocumentLocationFilter("comment1")), "authorId")
+        )
     }
 
     behavior of "Impact detection"
@@ -54,8 +65,10 @@ class InvariantSpec extends FlatSpec with Matchers {
         authorNameInCommentRule.monitoredFields should be(Set( monitorPostsCommentsAuthorId, monitorUsersName ))
     }
 
-    it should "identify monitor field in ModifiersUpdateChange" in {
+    it should "identify monitor field in ModifiersUpdateChange" taggedAs(Tag("r")) in {
         setNameOnUserLiz.impactedFields should be ( Set("name") )
+        setAuthorIdOnPost1.impactedFields should be ( Set("authorId") )
+        setAuthorIdOnComment1.impactedFields should be ( Set("comments.$.authorId") )
     }
 
     it should "monitor inserts" taggedAs(Tag("a")) in {
@@ -102,7 +115,7 @@ class InvariantSpec extends FlatSpec with Matchers {
         ))
     }
 
-    it should "monitor modifiers update" in {
+    it should "monitor modifiers update" taggedAs(Tag("r")) in {
         monitorUsersName.monitor(setNameOnUserLiz) should be ( Set(IdLocation(users,"liz")) )
         monitorPostsTitle.monitor(setNameOnUserLiz) should be ( 'empty )
         monitorPostsAuthorId.monitor(setNameOnUserLiz) should be ( 'empty )
@@ -112,6 +125,19 @@ class InvariantSpec extends FlatSpec with Matchers {
         monitorPostsTitle.monitor(setNotNameOnUsers) should be ( 'empty )
         monitorPostsAuthorId.monitor(setNotNameOnUsers) should be ( 'empty )
         monitorPostsCommentsAuthorId.monitor(setNotNameOnUsers) should be ( 'empty )
+
+        monitorUsersName.monitor(setAuthorIdOnPost1) should be ( 'empty )
+        monitorPostsTitle.monitor(setAuthorIdOnPost1) should be ( 'empty )
+        monitorPostsAuthorId.monitor(setAuthorIdOnPost1) should be ( Set( IdLocation(posts, "post1") ))
+        monitorPostsCommentsAuthorId.monitor(setAuthorIdOnPost1) should be ( 'empty )
+
+        monitorUsersName.monitor(setAuthorIdOnComment1) should be ( 'empty )
+        monitorPostsTitle.monitor(setAuthorIdOnComment1) should be ( 'empty )
+        monitorPostsAuthorId.monitor(setAuthorIdOnComment1) should be ( 'empty )
+        monitorPostsCommentsAuthorId.monitor(setAuthorIdOnComment1) should be ( Set(
+            SelectorNestedLocation(comments, MongoDBObject("comments._id" -> "comment1"),
+                IdSubDocumentLocationFilter("comment1"))
+        ))
     }
 
     behavior of "a searchableTitleRule-like rule"
@@ -213,6 +239,12 @@ class InvariantSpec extends FlatSpec with Matchers {
         commentCountInUserRule.dirtiedSet( setNameOnUserLiz ) should be( 'empty )
         commentCountInUserRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
         commentCountInUserRule.dirtiedSet( setAuthorIdOnPost1 ) should be( 'empty )
+        commentCountInUserRule.dirtiedSet( setAuthorIdOnComment1 ) should be( Set(
+            ShakyLocation(QueryLocation(users, SelectorNestedLocation(comments, setAuthorIdOnComment1.selector, IdSubDocumentLocationFilter("comment1")), "authorId"))
+        ))
+        commentCountInUserRule.dirtiedSet( setAuthorIdOnCommentsNestedSel ) should be( Set(
+            ShakyLocation(QueryLocation(users, SelectorNestedLocation(comments, setAuthorIdOnCommentsNestedSel.selector, AnySubDocumentLocationFilter), "authorId")) // TODO:optimize me
+        ))
     }
 
     it should "identify dirty set for fbu updates" in {
@@ -249,7 +281,12 @@ class InvariantSpec extends FlatSpec with Matchers {
         ))
         authorNameInCommentRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
         authorNameInCommentRule.dirtiedSet( setAuthorIdOnPost1 ) should be( 'empty )
-// FIXME def. need setAuthorIdOnComment1
+        authorNameInCommentRule.dirtiedSet( setAuthorIdOnComment1 ) should be( Set(
+            SelectorNestedLocation(comments, setAuthorIdOnComment1.selector, IdSubDocumentLocationFilter("comment1"))
+        ))
+        authorNameInCommentRule.dirtiedSet( setAuthorIdOnCommentsNestedSel ) should be( Set(
+            SelectorNestedLocation(comments, setAuthorIdOnCommentsNestedSel.selector, AnySubDocumentLocationFilter)
+        ))
     }
 
     it should "identify dirty set for fbu updates" in {

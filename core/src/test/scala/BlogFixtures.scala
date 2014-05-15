@@ -32,7 +32,7 @@ case class BlogFixtures(dbName:String) {
 
     // FIXME: commentCountInPostRule
 
-    val allRules = Array( searchableTitleRule, authorNameInPostRule, postCountInUserRule /*, commentCountInUserRule, authorNameInCommentRule */)
+    val allRules = Array( searchableTitleRule, authorNameInPostRule, postCountInUserRule, commentCountInUserRule, authorNameInCommentRule)
 
     // some monitored fields
     val monitorUsersId = MonitoredField(users, "_id") // id can not change, but this allow to detect insertion of users
@@ -68,6 +68,10 @@ case class BlogFixtures(dbName:String) {
         MongoDBObject("$set" -> MongoDBObject("authorId" -> "jack")))
     val setNotNameOnUsers = ModifiersUpdateChange(s"$dbName.users", MongoDBObject("_id" -> "liz"),
         MongoDBObject("$set" -> MongoDBObject("role" -> "Producer")))
+    val setAuthorIdOnComment1 = ModifiersUpdateChange(s"$dbName.posts", MongoDBObject("comments._id" -> "comment1"),
+        MongoDBObject("$set" -> MongoDBObject("comments.$.authorId" -> "liz")))
+    val setAuthorIdOnCommentsNestedSel = ModifiersUpdateChange(s"$dbName.posts", MongoDBObject("comments.authorId" -> "jack"),
+        MongoDBObject("$set" -> MongoDBObject("comments.$.authorId" -> "liz")))
 
     // some full body updates
     val fbuUserLiz = FullBodyUpdateChange(s"$dbName.users", MongoDBObject("_id" -> "liz"), userLiz)

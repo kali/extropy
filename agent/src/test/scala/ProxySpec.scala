@@ -52,6 +52,8 @@ abstract class BaseProxyServerSpec extends TestKit(ActorSystem("proxyspec")) wit
         client(dbName)("users").size should be(1)
         client(dbName)("users").update(MongoDBObject("_id" -> "liz"), MongoDBObject("$set" -> MongoDBObject("name" -> "Foobar")))
         allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+        client(dbName)("users").update(MongoDBObject("_id" -> "jack"), MongoDBObject("$set" -> MongoDBObject("name" -> "Foobar")))
+        allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
     }
 
     it should "deal with delete" in withProxiedClient { (extropy, blog, client) =>

@@ -53,31 +53,9 @@ object InvariantStatus extends Enumeration {
 }
 
 case class MonitoredField(container:Container, field:String) {
-
-    def monitor(op:Change):Set[ResolvedLocation] = container.monitor(field, op)
-/*
-        if(container.collection == op.writtenCollection)
-            op match {
-                case InsertChange(writtenCollection, document) => container match {
-                    case TopLevelContainer(collection) =>
-                        if(document.containsField(field))
-                            Set(DocumentLocation(TopLevelContainer(collection), document))
-                        else
-                            Set()
-                }
-                case DeleteChange(writtenCollection, selector) =>
-                    Set(SelectorLocation.make(TopLevelContainer(writtenCollection), selector))
-                case muc @ ModifiersUpdateChange(writtenCollection, selector, update) =>
-                    if(muc.impactedFields.contains(field))
-                        Set(SelectorLocation.make(TopLevelContainer(writtenCollection), selector))
-                    else
-                        Set()
-                case FullBodyUpdateChange(writtenCollection, selector, update) =>
-                    Set(SelectorLocation.make(TopLevelContainer(writtenCollection), selector))
-            }
-        else
-            Set()
-*/
+    def monitor(op:Change):Set[ResolvedLocation] = {
+        container.monitor(field, op)
+    }
 }
 
 case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie, reaction:Reaction) {
@@ -124,7 +102,6 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
         reactionFields.flatMap( _.monitor(op) ).flatMap( tie.backPropagate(this, _) ) ++
         tieReactionContainerMonitoredFields.flatMap( _.monitor(op) ).flatMap( tie.backPropagate(this, _) ) ++
         tieEffectContainerMonitoredFields.flatMap( _.monitor(op) )
-
 }
 
 // CONTAINERS
@@ -171,12 +148,24 @@ case class TopLevelContainer(collectionFullName:String) extends Container {
 }
 
 case class NestedContainer(parent:TopLevelContainer, arrayField:String) extends Container {
-    def asLocation = AnyNestedLocation(this)
-    def monitor(field:String, op:Change) = parent.monitor(arrayField, op).map {
-        case DocumentLocation(container, doc) => NestedDocumentLocation(this, doc, AnySubDocumentLocationFilter)
-        case IdLocation(container, id) => NestedIdLocation(this, id, AnySubDocumentLocationFilter)
-        case a => throw new Exception("not implemented")
-    }
+    def asLocation = SelectorNestedLocation(this, MongoDBObject.empty, AnySubDocumentLocationFilter)
+    def monitor(field:String, op:Change) =
+        parent.monitor(arrayField, op).map {
+            case DocumentLocation(container, doc) => NestedDocumentLocation(this, doc, AnySubDocumentLocationFilter)
+            case IdLocation(container, id) => NestedIdLocation(this, id, AnySubDocumentLocationFilter)
+            case a => throw new Exception("not implemented")
+        } ++ (op match {
+            case muc @ ModifiersUpdateChange(writtenCollection, selector, update) =>
+                if(muc.impactedFields.contains(arrayField + ".$." + field)) {
+                    if(selector.contains(arrayField + "._id") && SelectorLocation.isAValue(selector.get(arrayField + "._id")))
+                        Set(SelectorNestedLocation(this, selector, IdSubDocumentLocationFilter(selector.get(arrayField+"._id"))))
+                    else
+                        Set(SelectorNestedLocation(this, selector, AnySubDocumentLocationFilter))
+                }
+                else
+                    Set()
+            case _ => Set()
+        })
     def setValues(payloadMongo:MongoClient, location:Location, values:BSONObject) {}
     def toLabel = s"<i>$parent.$arrayField</i>"
 }
@@ -229,14 +218,11 @@ case class DocumentLocation(container:TopLevelContainer, override val data:BSONO
 }
 case class SelectorLocation(container:TopLevelContainer, selector:BSONObject) extends TopLevelResolvedLocation
 object SelectorLocation {
+    def isAValue(f:AnyRef) = !f.isInstanceOf[BSONObject] && !f.isInstanceOf[java.util.regex.Pattern]
     def make(container:TopLevelContainer, selector:BSONObject) =
-        if(selector.size == 1 && selector.keys.head == "_id" &&
-            !selector.values.head.isInstanceOf[BSONObject] &&
-            !selector.values.head.isInstanceOf[java.util.regex.Pattern])
+        if(selector.size == 1 && selector.keys.head == "_id" && isAValue(selector.values.head))
             IdLocation(container, selector.values.head)
-        else if(selector.size == 1 &&
-            !selector.values.head.isInstanceOf[BSONObject] &&
-            !selector.values.head.isInstanceOf[java.util.regex.Pattern])
+        else if(selector.size == 1 && isAValue(selector.values.head))
             SimpleFilterLocation(container, selector.keys.head, selector.values.head)
         else
             new SelectorLocation(container, selector)
@@ -262,18 +248,17 @@ case class ShakyLocation(query:ResolvableLocation) extends Location {
 }
 
 sealed abstract class NestedLocation extends Location {}
-sealed abstract class SubDocumentLocationFilter {
-    def matches(dbo:BSONObject):Boolean
-}
+object Blah { type SubDocumentLocationFilter = (BSONObject=>Boolean) }
+import Blah.SubDocumentLocationFilter
 case class IdSubDocumentLocationFilter(id:AnyRef) extends SubDocumentLocationFilter {
-    def matches(dbo:BSONObject) = dbo.getAs[AnyRef]("_id") == Some(id)
+    def apply(dbo:BSONObject) = dbo.getAs[AnyRef]("_id") == Some(id)
 }
 case object AnySubDocumentLocationFilter extends SubDocumentLocationFilter {
-    def matches(dbo:BSONObject) = true
+    def apply(dbo:BSONObject) = true
 }
 case class NestedDocumentLocation(container:NestedContainer, dbo:BSONObject, filter:SubDocumentLocationFilter)
         extends NestedLocation with DataLocation {
-    def datas = dbo.getAs[List[BSONObject]](container.arrayField).getOrElse(List()).filter( filter.matches(_) )
+    def datas = dbo.getAs[List[BSONObject]](container.arrayField).getOrElse(List()).filter( filter.apply(_) )
     def iterator(payloadMongo:MongoClient) = Traversable(this)
     def setValues(payloadMongo:MongoClient, values:BSONObject) {
         NestedHelpers.setValues(payloadMongo,container,MongoDBObject("_id" -> dbo.getAs[AnyRef]("_id")),filter,values)
@@ -285,7 +270,7 @@ object NestedHelpers {
         payloadMongo(container.parent.dbName)(container.parent.collectionName)
             .find(find).sort(MongoDBObject("_id" -> 1)).flatMap { dbo =>
                 dbo.getAs[List[BSONObject]](container.arrayField).getOrElse(List())
-                    .filter( filter.matches(_) )
+                    .filter( filter )
                     .map { sub => (dbo, sub.getAs[AnyRef]("_id").get) }
             }.toTraversable
     def iterator(payloadMongo:MongoClient,container:NestedContainer, find:MongoDBObject,
@@ -309,46 +294,31 @@ object NestedHelpers {
 case class NestedIdLocation(container:NestedContainer, id:AnyRef, filter:SubDocumentLocationFilter)
     extends NestedLocation with ResolvedLocation {
     def iterator(payloadMongo:MongoClient):Traversable[NestedDocumentLocation] =
-            payloadMongo(container.parent.dbName)(container.parent.collectionName)
-                .find(MongoDBObject("_id" -> id)).flatMap { dbo =>
-                    dbo.getAs[List[BSONObject]](container.arrayField).getOrElse(List())
-                        .filter( filter.matches(_) )
-                        .map { sub =>
-                            NestedDocumentLocation(container, dbo, IdSubDocumentLocationFilter(sub.getAs[AnyRef]("_id").get))
-                        }
-                }.toTraversable
+        NestedHelpers.iterator(payloadMongo, container, MongoDBObject("_id" -> id), filter)
     def setValues(payloadMongo:MongoClient, values:BSONObject) {
-        if(!values.isEmpty) {
-            iterator(payloadMongo).foreach { sub =>
-                payloadMongo(container.parent.dbName)(container.parent.collectionName)
-                    .update(MongoDBObject("_id" -> id, container.arrayField + "._id" -> sub.data.getAs[AnyRef]("_id")),
-                        MongoDBObject("$set" -> MongoDBObject(values.toSeq.map {
-                            case (k,v) => ((container.arrayField + ".$." + k) -> v)
-                        }:_*)))
-            }
-        }
+        NestedHelpers.setValues(payloadMongo, container, MongoDBObject("_id" -> id), filter, values)
     }
 }
 
 case class SimpleNestedLocation(container:NestedContainer, field:String, value:AnyRef)
-    extends NestedLocation with ResolvedLocation {
+        extends NestedLocation with ResolvedLocation {
     def iterator(payloadMongo:MongoClient) =
-            payloadMongo(container.parent.dbName)(container.parent.collectionName)
-                .find(MongoDBObject(container.arrayField + "." + field -> value)).flatMap { dbo =>
-                    dbo.getAs[List[BSONObject]](container.arrayField).getOrElse(List())
-                        .filter( _.getAs[AnyRef](field) == Some(value) )
-                        .map { sub =>
-                            NestedDocumentLocation(container, dbo, IdSubDocumentLocationFilter(sub.getAs[AnyRef]("_id").get))
-                        }
-                }.toTraversable
-    def setValues(payloadMongo:MongoClient, values:BSONObject) = throw new Exception("not implemented")
+        NestedHelpers.iterator(payloadMongo, container, MongoDBObject(container.arrayField+"."+field -> value),
+            dbo=>dbo.getAs[AnyRef](field)==Some(value))
+    def setValues(payloadMongo:MongoClient, values:BSONObject) =
+        NestedHelpers.setValues(payloadMongo, container, MongoDBObject(container.arrayField+"."+field -> value),
+            dbo=>dbo.getAs[AnyRef](field)==Some(value), values)
 }
 
-case class AnyNestedLocation(container:NestedContainer) extends NestedLocation with ResolvedLocation {
-    def iterator(payloadMongo:MongoClient) = NestedHelpers.iterator(payloadMongo, container,
-        MongoDBObject(container.arrayField + "._id" -> MongoDBObject("$exists" -> true)),
-        AnySubDocumentLocationFilter)
-    def setValues(payloadMongo:MongoClient, values:BSONObject) = throw new Exception("not implemented")
+case class SelectorNestedLocation(container:NestedContainer, selector:MongoDBObject, filter:SubDocumentLocationFilter)
+        extends NestedLocation with ResolvedLocation {
+    val augmentedSelector:MongoDBObject = new MongoDBObject(
+        Map(container.arrayField + "._id" -> MongoDBObject("$exists" -> true)) ++ selector
+    )
+    def iterator(payloadMongo:MongoClient) =
+        NestedHelpers.iterator(payloadMongo, container, augmentedSelector, filter)
+    def setValues(payloadMongo:MongoClient, values:BSONObject) =
+        NestedHelpers.setValues(payloadMongo, container, augmentedSelector, filter, values)
 }
 // TIE
 
