@@ -170,9 +170,13 @@ case class TopLevelContainer(collectionFullName:String) extends Container {
     override def toString = collectionFullName
 }
 
-case class NestedContainer(parent:Container, arrayField:String) extends Container {
+case class NestedContainer(parent:TopLevelContainer, arrayField:String) extends Container {
     def asLocation = null
-    def monitor(field:String, op:Change) = parent.monitor(arrayField, op)
+    def monitor(field:String, op:Change) = parent.monitor(arrayField, op).map {
+        case DocumentLocation(container, doc) => NestedDocumentLocation(this, doc, AnySubDocumentLocationFilter)
+        case IdLocation(container, id) => NestedIdLocation(this, id, AnySubDocumentLocationFilter)
+        case a => throw new Exception("da fuk")
+    }
     def setValues(payloadMongo:MongoClient, location:Location, values:BSONObject) {}
     def toLabel = s"<i>$parent.$arrayField</i>"
 }
@@ -189,8 +193,11 @@ sealed trait ResolvedLocation extends Location with ResolvableLocation {
     def setValues(payloadMongo:MongoClient, values:BSONObject)
     def resolve(payloadMongo:MongoClient) = Traversable(this)
 }
-sealed trait DataLocation extends ResolvedLocation {
-    def data:BSONObject
+sealed trait DatasLocation extends ResolvedLocation {
+    def datas:Traversable[BSONObject]
+}
+sealed trait DataLocation extends DatasLocation {
+    def data:BSONObject = datas.head
 }
 sealed abstract class TopLevelLocation extends Location {
     override def container:TopLevelContainer
@@ -214,8 +221,9 @@ sealed trait TopLevelResolvedLocation extends TopLevelLocation with ResolvedLoca
 trait HaveIdLocation extends ResolvableLocation {
     def id:AnyRef
 }
-case class DocumentLocation(container:TopLevelContainer, data:BSONObject) extends TopLevelResolvedLocation
+case class DocumentLocation(container:TopLevelContainer, override val data:BSONObject) extends TopLevelResolvedLocation
         with DataLocation with HaveIdLocation {
+    def datas = Some(data)
     def id = data.getAs[AnyRef]("_id").get
     def selector = MongoDBObject("_id" -> id)
 }
@@ -242,8 +250,8 @@ case class IdLocation(container:TopLevelContainer, id:AnyRef)
     def selector = MongoDBObject("_id" -> id)
 }
 
-case class QueryLocation(container:TopLevelContainer, location:TopLevelResolvedLocation, field:String)
-        extends TopLevelLocation with ResolvableLocation {
+case class QueryLocation(container:TopLevelContainer, location:ResolvedLocation, field:String)
+        extends ResolvableLocation {
     def resolve(mongo:MongoClient):Traversable[ResolvedLocation] = {
         location.iterator(mongo).flatMap( doc => doc.data.getAs[AnyRef](field).map(IdLocation(container,_)) )
     }
@@ -252,7 +260,53 @@ case class ShakyLocation(query:ResolvableLocation) extends Location {
     def container = query.container
     def save(mongo:MongoClient):Traversable[ResolvableLocation] = query.resolve(mongo) ++ Traversable(query)
 }
-case class NestedLocation(container:NestedContainer, parent:Location) extends Location {
+
+sealed abstract class NestedLocation extends Location {}
+sealed abstract class SubDocumentLocationFilter {
+    def matches(dbo:BSONObject):Boolean
+}
+case class IdSubDocumentLocationFilter(id:AnyRef) extends SubDocumentLocationFilter {
+    def matches(dbo:BSONObject) = dbo.getAs[AnyRef]("_id") == Some(id)
+}
+case object AnySubDocumentLocationFilter extends SubDocumentLocationFilter {
+    def matches(dbo:BSONObject) = true
+}
+
+case class NestedDocumentLocation(container:NestedContainer, dbo:BSONObject, filter:SubDocumentLocationFilter)
+        extends NestedLocation with DataLocation {
+    def datas = dbo.getAs[List[BSONObject]](container.arrayField).getOrElse(List()).filter( filter.matches(_) )
+    def iterator(payloadMongo:MongoClient) = Traversable(this)
+    def setValues(payloadMongo:MongoClient, values:BSONObject) {
+        if(!values.isEmpty) {
+            payloadMongo(container.parent.dbName)(container.parent.collectionName).update(
+                MongoDBObject("_id" -> dbo.getAs[AnyRef]("_id"), (container.arrayField + "._id") -> "foo"),
+                MongoDBObject("$set" -> MongoDBObject(values.toSeq.map {
+                    case (k,v) => ((container.arrayField + ".$." + k) -> v)
+                }:_*))
+            )
+        }
+    }
+}
+case class NestedIdLocation(container:NestedContainer, id:AnyRef, filter:SubDocumentLocationFilter)
+    extends NestedLocation with ResolvedLocation {
+    def iterator(payloadMongo:MongoClient) =
+            payloadMongo(container.parent.dbName)(container.parent.collectionName)
+                .find(MongoDBObject("_id" -> id)).flatMap { dbo =>
+                    dbo.getAs[List[BSONObject]](container.arrayField).getOrElse(List())
+                        .filter( filter.matches(_) )
+                        .map { sub =>
+                            NestedDocumentLocation(container, dbo, IdSubDocumentLocationFilter(sub.getAs[AnyRef]("_id").get))
+                        }
+                }.toTraversable
+    def setValues(payloadMongo:MongoClient, values:BSONObject) {
+        throw new Exception("later")
+    }
+}
+
+case class SimpleNestedLocation(container:NestedContainer, field:String, value:AnyRef)
+    extends NestedLocation with ResolvedLocation {
+    def iterator(payloadMongo:MongoClient) = throw new Exception("beeeaaah")
+    def setValues(payloadMongo:MongoClient, values:BSONObject) = throw new Exception("beeeaaah")
 }
 
 // TIE
@@ -287,13 +341,18 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
                                         data.data.getAs[AnyRef](localFieldName).get)
         case tld:TopLevelResolvedLocation => QueryLocation(rule.reactionContainer.asInstanceOf[TopLevelContainer],
                                                 tld, localFieldName)
+        case _ => throw new Exception(s"Unexpected location:$from in propagate for $this")
     }
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location] = rule.effectContainer match {
-        case cc:TopLevelContainer => location match {
+        case cc:TopLevelContainer => location.asInstanceOf[TopLevelLocation] match {
             case hil:HaveIdLocation => Some(SimpleFilterLocation(cc, localFieldName, hil.id))
             case tld:TopLevelResolvedLocation => Some(QueryLocation(cc, tld, "_id"))
+            case _ => throw new Exception(s"Unexpected location:$location in backPropagate for $this")
         }
-        case NestedContainer(_,field) => null
+        case cc:NestedContainer => location.asInstanceOf[TopLevelLocation] match {
+            case hil:HaveIdLocation => Some(SimpleNestedLocation(cc, localFieldName, hil.id))
+            case _ => throw new Exception(s"Unexpected location:$location in backPropagate for $this")
+        }
     }
     def toLabel = s"following <i>$localFieldName</i> to"
 }
@@ -301,17 +360,22 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
 case class ReverseKeyTie(reactionFieldName:String) extends Tie {
     val effectContainerMonitoredFields:Set[String] = Set("_id")
     val reactionContainerMonitoredFields = Set(reactionFieldName)
-    def propagate(rule:Rule, from:ResolvedLocation) = rule.reactionContainer match {
-        case cc:TopLevelContainer => from match {
+    def propagate(rule:Rule, location:ResolvedLocation) = rule.reactionContainer match {
+        case cc:TopLevelContainer => location match {
             case hil:HaveIdLocation => SimpleFilterLocation(cc, reactionFieldName, hil.id)
             case tld:TopLevelResolvedLocation => QueryLocation(cc, tld, "_id")
+            case _ => throw new Exception(s"Unexpected location:$location in backPropagate for $this")
         }
-        case NestedContainer(collection, field) => null
+        case cc@ NestedContainer(collection, field) => location match {
+            case hil:HaveIdLocation => SimpleNestedLocation(cc, reactionFieldName, hil.id)
+            case _ => throw new Exception(s"Unexpected location:$location in backPropagate for $this")
+        }
     }
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location] = {
         val q = location match {
-            case sel:TopLevelResolvedLocation =>
+            case sel:ResolvedLocation =>
                 QueryLocation(rule.effectContainer.asInstanceOf[TopLevelContainer], sel, reactionFieldName)
+            case _ => throw new Exception(s"Unexpected location:$location in backPropagate for $this")
         }
         Traversable(ShakyLocation(q))
     }

@@ -72,6 +72,7 @@ case class BlogFixtures(dbName:String) {
     // some full body updates
     val fbuUserLiz = FullBodyUpdateChange(s"$dbName.users", MongoDBObject("_id" -> "liz"), userLiz)
     val fbuPost1 = FullBodyUpdateChange(s"$dbName.posts", MongoDBObject("_id" -> "post1"), post1)
+    val fbuPost2 = FullBodyUpdateChange(s"$dbName.posts", MongoDBObject("_id" -> "post2"), post2)
 
     // some delete
     val deleteUserLiz = DeleteChange(s"$dbName.users", MongoDBObject("_id" -> "liz"))

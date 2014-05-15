@@ -50,10 +50,8 @@ class InvariantSpec extends FlatSpec with Matchers {
         searchableTitleRule.monitoredFields should be( Set( monitorPostsTitle ) )
         authorNameInPostRule.monitoredFields should be( Set( monitorPostsAuthorId, monitorUsersName ) )
         postCountInUserRule.monitoredFields should be( Set( monitorPostsAuthorId, monitorUsersId ) )
-/*
         commentCountInUserRule.monitoredFields should be( Set( monitorPostsCommentsAuthorId, monitorUsersId ) )
         authorNameInCommentRule.monitoredFields should be(Set( monitorPostsCommentsAuthorId, monitorUsersName ))
-*/
     }
 
     it should "identify monitor field in ModifiersUpdateChange" in {
@@ -69,12 +67,10 @@ class InvariantSpec extends FlatSpec with Matchers {
         monitorUsersName.monitor(insertPost1) should be( 'empty )
         monitorPostsTitle.monitor(insertPost1) should be ( Set(DocumentLocation(posts,post1)) )
         monitorPostsAuthorId.monitor(insertPost1) should be ( Set(DocumentLocation(posts,post1)) )
-/*
         monitorPostsCommentsAuthorId.monitor(insertPost1) should be ( 'empty )
         monitorPostsCommentsAuthorId.monitor(insertPost2) should be (
-            Set(SubDocumentLocation(DocumentLocation(posts,post2),SelectorLocation(MongoDBObject.empty) ) )
+            Set(NestedDocumentLocation(comments, post2, AnySubDocumentLocationFilter))
         )
-*/
         monitorUsersName.monitor(insertNotUsers) should be( 'empty )
     }
 
@@ -87,7 +83,9 @@ class InvariantSpec extends FlatSpec with Matchers {
         monitorUsersName.monitor(deletePost1) should be( 'empty )
         monitorPostsTitle.monitor(deletePost1) should be ( Set(IdLocation(posts,"post1")) )
         monitorPostsAuthorId.monitor(deletePost1) should be ( Set(IdLocation(posts,"post1")) )
-//        monitorPostsCommentsAuthorId.monitor(deletePost1) should be ( Set(IdLocation(posts,"post1")) )
+        monitorPostsCommentsAuthorId.monitor(deletePost1) should be ( Set(
+            NestedIdLocation(comments, "post1", AnySubDocumentLocationFilter)
+        ))
     }
 
     it should "monitor full body update" in {
@@ -99,19 +97,21 @@ class InvariantSpec extends FlatSpec with Matchers {
         monitorUsersName.monitor(fbuPost1) should be( 'empty )
         monitorPostsTitle.monitor(fbuPost1) should be ( Set(IdLocation(posts,"post1")) )
         monitorPostsAuthorId.monitor(fbuPost1) should be ( Set(IdLocation(posts,"post1")) )
-//        monitorPostsCommentsAuthorId.monitor(fbuPost1) should be ( Set(IdLocation(posts,"post1")) )
+        monitorPostsCommentsAuthorId.monitor(fbuPost1) should be ( Set(
+            NestedIdLocation(comments, "post1", AnySubDocumentLocationFilter)
+        ))
     }
 
     it should "monitor modifiers update" in {
         monitorUsersName.monitor(setNameOnUserLiz) should be ( Set(IdLocation(users,"liz")) )
         monitorPostsTitle.monitor(setNameOnUserLiz) should be ( 'empty )
         monitorPostsAuthorId.monitor(setNameOnUserLiz) should be ( 'empty )
-//        monitorPostsCommentsAuthorId.monitor(setNameOnUserLiz) should be ( 'empty )
+        monitorPostsCommentsAuthorId.monitor(setNameOnUserLiz) should be ( 'empty )
 
         monitorUsersName.monitor(setNotNameOnUsers) should be ( 'empty )
         monitorPostsTitle.monitor(setNotNameOnUsers) should be ( 'empty )
         monitorPostsAuthorId.monitor(setNotNameOnUsers) should be ( 'empty )
-//        monitorPostsCommentsAuthorId.monitor(setNotNameOnUsers) should be ( 'empty )
+        monitorPostsCommentsAuthorId.monitor(setNotNameOnUsers) should be ( 'empty )
     }
 
     behavior of "a searchableTitleRule-like rule"
@@ -203,8 +203,8 @@ class InvariantSpec extends FlatSpec with Matchers {
         commentCountInUserRule.dirtiedSet( insertUserLiz ) should be ( Set(DocumentLocation(users,userLiz)) )
         commentCountInUserRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
         commentCountInUserRule.dirtiedSet( insertPost1 ) should be ( 'empty )
-        commentCountInUserRule.dirtiedSet( insertPost2 ) should be ( Set(
-            ShakyLocation(QueryLocation(users, NestedLocation(DocumentLocation(posts,post2), "comments"), "authorId"))
+        commentCountInUserRule.dirtiedSet( insertPost2 ) should be (Set(
+            ShakyLocation(QueryLocation(users, NestedDocumentLocation(comments,post2,AnySubDocumentLocationFilter), "authorId")) // FIXME not shaky
         ))
     }
 
@@ -218,57 +218,60 @@ class InvariantSpec extends FlatSpec with Matchers {
     it should "identify dirty set for fbu updates" in {
         commentCountInUserRule.dirtiedSet( fbuUserLiz ) should be ( Set(IdLocation(users,"liz")) )
         commentCountInUserRule.dirtiedSet( fbuPost1 ) should be ( Set(
-            ShakyLocation(QueryLocation(users, IdLocation(posts,"post1"), "authorId"))
+            ShakyLocation(QueryLocation(users, NestedIdLocation(comments,"post1",AnySubDocumentLocationFilter), "authorId"))
         ))
     }
 
     it should "identify dirty set for delete" in {
         commentCountInUserRule.dirtiedSet( deleteUserLiz ) should be ( Set(IdLocation(users,"liz")) ) // TODO: optimize me
         commentCountInUserRule.dirtiedSet( deletePost1 ) should be ( Set(
-            ShakyLocation(QueryLocation(users, IdLocation(posts,"post1"), "authorId"))
+            ShakyLocation(QueryLocation(users, NestedIdLocation(comments,"post1",AnySubDocumentLocationFilter), "authorId"))
         ))
     }
 
-/*
     behavior of "a authorNameInComment rule"
 
     it should "identify dirty set for inserts" taggedAs(Tag("c")) in {
-pending
         authorNameInCommentRule.dirtiedSet( insertUserLiz ) should be ( Set(
-            SubDocumentLocation(SimpleFilterLocation("comments.authorId", "liz"), SimpleFilterLocation(posts,"authorId","liz")))
-        )
+            SimpleNestedLocation(comments, "authorId", "liz")
+        ))
         authorNameInCommentRule.dirtiedSet( insertNotUsers ) should be ( 'empty )
-        authorNameInCommentRule.dirtiedSet( insertPost1 ) should be ( Set(
-            QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId"),
-            SnapshotLocation(QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId") ) ) )
+        authorNameInCommentRule.dirtiedSet( insertPost1 ) should be ( 'empty )
+        authorNameInCommentRule.dirtiedSet( insertPost2 ) should be ( Set(
+            NestedDocumentLocation(comments, post2, AnySubDocumentLocationFilter)
+        ))
     }
 
     it should "identify dirty set for modifiers updates" in {
-pending
         authorNameInCommentRule.dirtiedSet( setTitleOnPost1 ) should be( 'empty )
-        authorNameInCommentRule.dirtiedSet( setNameOnUserLiz ) should be( 'empty )
+        authorNameInCommentRule.dirtiedSet( setNameOnUserLiz ) should be( Set(
+            SimpleNestedLocation(comments, "authorId", "liz")
+        ))
         authorNameInCommentRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
-        authorNameInCommentRule.dirtiedSet( setAuthorIdOnPost1 ) should be( Set(
-            QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId"),
-            SnapshotLocation(QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId") ) ) )
+        authorNameInCommentRule.dirtiedSet( setAuthorIdOnPost1 ) should be( 'empty )
+// FIXME def. need setAuthorIdOnComment1
     }
 
     it should "identify dirty set for fbu updates" in {
-pending
-        authorNameInCommentRule.dirtiedSet( fbuUserLiz ) should be ( Set(IdLocation(users,"liz")) )
+        authorNameInCommentRule.dirtiedSet( fbuUserLiz ) should be ( Set(
+            SimpleNestedLocation(comments, "authorId", "liz")
+        ))
         authorNameInCommentRule.dirtiedSet( fbuPost1 ) should be ( Set(
-            QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId"),
-            SnapshotLocation(QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId") ) ) )
+            NestedIdLocation(comments, "post1", AnySubDocumentLocationFilter)
+        ))
+        authorNameInCommentRule.dirtiedSet( fbuPost2 ) should be ( Set(
+            NestedIdLocation(comments, "post2", AnySubDocumentLocationFilter)
+        ))
     }
 
     it should "identify dirty set for delete" in {
-pending
-        authorNameInCommentRule.dirtiedSet( deleteUserLiz ) should be ( Set(IdLocation(users,"liz")) ) // TODO: optimize me
+        authorNameInCommentRule.dirtiedSet( deleteUserLiz ) should be ( Set(
+            SimpleNestedLocation(comments, "authorId", "liz")
+        ))
         authorNameInCommentRule.dirtiedSet( deletePost1 ) should be ( Set(
-            QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId"),
-            SnapshotLocation(QueryLocation(SubCollectionContainer(s"$dbName.posts", "comments"), IdLocation(posts,"post1"), "authorId") ) ) )
+            NestedIdLocation(comments, "post1", AnySubDocumentLocationFilter) // FIXME: empty
+        ))
     }
-*/
 
     /*
     it should "back propagate locations detected by processor" in {
