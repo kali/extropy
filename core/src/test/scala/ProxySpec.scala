@@ -1,4 +1,4 @@
-package org.zoy.kali.extropy.proxy
+package org.zoy.kali.extropy
 
 import scala.concurrent.duration._
 
@@ -12,14 +12,28 @@ class ProxySpec extends FlatSpec with Matchers with BeforeAndAfterAll with Extro
 
     behavior of "A synchronous proxy"
 
-    it should "deal with various inserts" in withExtropyAndBlog { (extropy, fixture) =>
+    it should "deal with various inserts" taggedAs(Tag("r")) in withExtropyAndBlog { (extropy, fixture) =>
+        val proxy = SyncProxy(extropy)
+        import fixture._
+        Seq(insertPost1,insertPost2,insertUserLiz,insertUserJack).foreach { op =>
+            Seq("users", "posts").foreach( extropy.payloadMongo(dbName)(_).remove(MongoDBObject.empty) )
+            proxy.doChange(op)
+            withClue( s"after: $op:\n" ) {
+                allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+            }
+        }
+    }
+
+    it should "deal with various inserts permutations" in withExtropyAndBlog { (extropy, fixture) =>
         val proxy = SyncProxy(extropy)
         import fixture._
         Seq(insertPost1,insertPost2,insertUserLiz,insertUserJack).permutations.foreach { perm =>
             Seq("users", "posts").foreach( extropy.payloadMongo(dbName)(_).remove(MongoDBObject.empty) )
             perm.foreach { op =>
                 proxy.doChange(op)
-                allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+                withClue( s"on permutation:\n${perm.map ( " -> " + _ + "\n").mkString }\n at step:\n$op" ) {
+                    allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
+                }
             }
         }
     }

@@ -9,5 +9,6 @@
 		<appender-ref ref="rootLogger" />
 	</root>
 	<logger name="org.zoy.kali" level="INFO" />
+	<logger name="org.zoy.kali.extropy.Rule" level="TRACE" />
 
 </configuration>

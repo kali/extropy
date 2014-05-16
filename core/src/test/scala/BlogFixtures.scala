@@ -35,10 +35,12 @@ case class BlogFixtures(dbName:String) {
 
     // some monitored fields
     val monitorUsersId = MonitoredField(users, "_id") // id can not change, but this allow to detect insertion of users
+    val monitorPostsId = MonitoredField(posts, "_id")
+    val monitorCommentsId = MonitoredField(comments, "_id")
     val monitorUsersName = MonitoredField(users, "name")
     val monitorPostsTitle = MonitoredField(posts, "title")
     val monitorPostsAuthorId = MonitoredField(posts, "authorId")
-    val monitorPostsCommentsAuthorId = MonitoredField(NestedContainer(posts, "comments"), "authorId")
+    val monitorPostsCommentsAuthorId = MonitoredField(comments, "authorId")
 
     // some data
     val userLiz = MongoDBObject("_id" -> "liz", "name" -> "Elizabeth Lemon")
