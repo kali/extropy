@@ -59,12 +59,18 @@ case class MonitoredField(container:Container, field:String) {
     }
 }
 
-case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie, reaction:Reaction) extends StrictLogging {
-    val reactionFields:Set[MonitoredField] = reaction.reactionFields.map( MonitoredField(reactionContainer, _) )
-    val tieEffectContainerMonitoredFields:Set[MonitoredField] = tie.effectContainerMonitoredFields.map( MonitoredField(effectContainer, _) )
-    val tieReactionContainerMonitoredFields:Set[MonitoredField] = tie.reactionContainerMonitoredFields.map( MonitoredField(reactionContainer, _) )
+case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie, reaction:Reaction)
+        extends StrictLogging {
+    val reactionFields:Set[MonitoredField] =
+            reaction.reactionFields.map( MonitoredField(reactionContainer, _) )
+    val tieEffectContainerMonitoredFields:Set[MonitoredField] =
+            tie.effectContainerMonitoredFields.map( MonitoredField(effectContainer, _) )
+    val tieReactionContainerMonitoredFields:Set[MonitoredField] =
+            tie.reactionContainerMonitoredFields.map( MonitoredField(reactionContainer, _) )
 
-    val monitoredFields:Set[MonitoredField] = reactionFields ++ tieEffectContainerMonitoredFields ++ tieReactionContainerMonitoredFields + MonitoredField(effectContainer, "_id")
+    val monitoredFields:Set[MonitoredField] =
+            reactionFields ++ tieEffectContainerMonitoredFields ++
+            tieReactionContainerMonitoredFields + MonitoredField(effectContainer, "_id")
 
     def alterWrite(op:Change):Change = op // tie.alterWrite(this, op)
     def fixAll(payloadMongo:MongoClient) {
@@ -82,24 +88,25 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
     }
 
     // returns (fieldName,expected,got)*
-    def checkOne(payloadMongo:MongoClient, location:ResolvedLocation):Traversable[(String,Option[AnyRef],Option[AnyRef])] = {
-        val reactant = tie.propagate(this, location).resolve(payloadMongo).flatMap( _.iterator(payloadMongo) ).map( _.data )
+    case class Mismatch(fieldName:String,expected:Option[AnyRef],got:Option[AnyRef])
+    def checkOne(payloadMongo:MongoClient, location:ResolvedLocation):Traversable[Mismatch] = {
+        val reactant = tie.propagate(this, location).resolve(payloadMongo)
+                .flatMap( _.iterator(payloadMongo) ).map( _.data )
         val effects = reaction.process(reactant)
         location.iterator(payloadMongo).flatMap { targetDbo =>
             val target = new MongoDBObject(targetDbo.data)
             new MongoDBObject(effects).flatMap{ case (k,v) =>
                 val got = target.getAs[AnyRef](k)
                 if(got != Option(v))
-                    Some(k,Option(v),got)
+                    Some(Mismatch(k,Option(v),got))
                 else
                     None
             }
         }
     }
 
-    def checkAll(payloadMongo:MongoClient):Traversable[(Location, String, AnyRef,AnyRef)] = {
-        effectContainer.asLocation.iterator(payloadMongo).flatMap( loc => checkOne(payloadMongo, loc).map( e => (loc,e._1,e._2,e._3) ) )
-    }
+    def checkAll(payloadMongo:MongoClient):Traversable[(Location,Mismatch)] =
+        effectContainer.asLocation.iterator(payloadMongo).flatMap( loc => checkOne(payloadMongo, loc).map( (loc,_) ) )
 
     def dirtiedSet(op:Change):Set[Location] =
         reactionFields.flatMap( _.monitor(op) ).flatMap( tie.backPropagate(this, _) ) ++
@@ -161,8 +168,10 @@ case class NestedContainer(parent:TopLevelContainer, arrayField:String) extends 
         } ++ (op match {
             case muc @ ModifiersUpdateChange(writtenCollection, selector, update) =>
                 if(muc.impactedFields.contains(arrayField + ".$." + field)) {
-                    if(selector.contains(arrayField + "._id") && SelectorLocation.isAValue(selector.get(arrayField + "._id")))
-                        Set(NestedSelectorLocation(this, selector, IdSubDocumentLocationFilter(selector.get(arrayField+"._id"))))
+                    if(selector.contains(arrayField + "._id") &&
+                            SelectorLocation.isAValue(selector.get(arrayField + "._id")))
+                        Set(NestedSelectorLocation(this, selector,
+                            IdSubDocumentLocationFilter(selector.get(arrayField+"._id"))))
                     else
                         Set(NestedSelectorLocation(this, selector, AnySubDocumentLocationFilter))
                 }
