@@ -15,6 +15,10 @@ import mongoutils.BSONObjectConversions._
 
 import com.typesafe.scalalogging.slf4j.StrictLogging
 
+import org.json4s._
+import org.json4s.JsonDSL._
+import org.json4s.native.JsonMethods._
+
 abstract sealed class Change {
     def writtenCollection:String
     def play(payloadMongo:MongoClient):WriteResult
@@ -113,6 +117,8 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
         tieReactionContainerMonitoredFields.flatMap( _.monitor(op) ).flatMap( tie.backPropagate(this, _) ) ++
         tieEffectContainerMonitoredFields.flatMap( _.monitor(op) ) ++
         MonitoredField(effectContainer, "_id").monitor(op)
+
+    def toJson:JObject = ( effectContainer.toJsonFieldName -> tie.toJson(reactionContainer) ) ~ reaction.toJson
 }
 
 // CONTAINERS
@@ -122,6 +128,7 @@ abstract class Container {
     def asLocation:ResolvedLocation
     def monitor(field:String, op:Change):Set[ResolvedLocation]
     def toLabel:String
+    def toJsonFieldName:String
 }
 
 case class TopLevelContainer(collectionFullName:String) extends Container {
@@ -156,6 +163,8 @@ case class TopLevelContainer(collectionFullName:String) extends Container {
 
     def toLabel = s"<i>$collectionFullName</i>"
     override def toString = collectionFullName
+
+    def toJsonFieldName:String = collectionFullName
 }
 
 case class NestedContainer(parent:TopLevelContainer, arrayField:String) extends Container {
@@ -179,11 +188,10 @@ case class NestedContainer(parent:TopLevelContainer, arrayField:String) extends 
                     Set()
             case _ => Set()
         })
-    def setValues(payloadMongo:MongoClient, location:Location, values:BSONObject) {}
     def toLabel = s"<i>$parent.$arrayField</i>"
+    def toJsonFieldName:String = parent.collectionFullName + "." + arrayField
 }
 
-// LOCATIONS
 // TIE
 
 @Salat
@@ -195,6 +203,7 @@ abstract class Tie {
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location]
 
     def toLabel:String
+    def toJson(reactionContainer:Container):JValue
 }
 
 case class SameDocumentTie() extends Tie {
@@ -205,6 +214,7 @@ case class SameDocumentTie() extends Tie {
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location] = Some(location)
 
     def toLabel = "from the same document in"
+    def toJson(reactionContainer:Container) = "same"
 }
 
 case class FollowKeyTie(localFieldName:String) extends Tie {
@@ -230,6 +240,9 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
         }
     }
     def toLabel = s"following <i>$localFieldName</i> to"
+    def toJson(reactionContainer:Container) =
+        ( "follow" -> localFieldName) ~
+        ( "to" -> reactionContainer.toJsonFieldName)
 }
 
 case class ReverseKeyTie(reactionFieldName:String) extends Tie {
@@ -255,6 +268,9 @@ case class ReverseKeyTie(reactionFieldName:String) extends Tie {
         Traversable(ShakyLocation(q))
     }
     def toLabel = s"searching by <i>$reactionFieldName</i> in"
+    def toJson(reactionContainer:Container) =
+        ( "search" -> reactionContainer.toJsonFieldName) ~
+        ( "by" -> reactionFieldName)
 }
 
 case class SubDocumentTie(fieldName:String) extends Tie {
@@ -276,6 +292,7 @@ case class SubDocumentTie(fieldName:String) extends Tie {
         case SimpleNestedLocation(_, k, v) => Some(SimpleFilterLocation(rule.effectContainer.asInstanceOf[TopLevelContainer], k, v))
     }
     def toLabel = s"entering <i>$fieldName</i>"
+    def toJson(reactionContainer:Container) = ( "unwind" -> fieldName )
 }
 
 // REACTION
@@ -283,6 +300,7 @@ case class SubDocumentTie(fieldName:String) extends Tie {
     def reactionFields:Set[String]
     def process(data:Traversable[BSONObject]):BSONObject
     def toLabel:String
+    def toJson:JObject
 }
 
 case class CopyField(from:String, to:String)
@@ -292,12 +310,14 @@ case class CopyFieldsReaction(fields:List[CopyField]) extends Reaction {
         MongoDBObject(fields.map { pair => (pair.to, doc.getAs[AnyRef](pair.from)) })
     }.getOrElse(MongoDBObject.empty)
     def toLabel = "copy " + fields.map( f => "<i>%s</i> as <i>%s</i>".format(f.from, f.to) ).mkString(", ")
+    def toJson = JObject(fields.map( f => JField(f.to,f.from) ))
 }
 
 case class CountReaction(field:String) extends Reaction {
     val reactionFields:Set[String] = Set()
     def process(data:Traversable[BSONObject]) = MongoDBObject(field -> data.size)
     def toLabel = s"count as <i>$field</i>"
+    def toJson = (field -> ("count" -> true))
 }
 
 // FOR TESTS
@@ -309,6 +329,7 @@ case class StringNormalizationReaction(from:String, to:String) extends Reaction 
         case None => null
     }))
     def toLabel = s"normalize <i>$from</i> as <i>$to</i>"
+    def toJson = (to -> ("eval" -> s"$from.toLowerCase") ~ ("using" -> List(from)))
 }
 
 

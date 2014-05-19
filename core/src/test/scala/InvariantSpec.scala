@@ -4,11 +4,12 @@ import scala.concurrent.duration._
 
 import org.scalatest._
 
-import org.zoy.kali.extropy._
-
 import com.mongodb.casbah.Imports._
 
 import mongoutils.BSONObjectConversions._
+
+import org.json4s._
+import org.json4s.native.JsonMethods._
 
 class InvariantSpec extends FlatSpec with Matchers {
 

@@ -16,6 +16,10 @@ import scala.concurrent.Await
 import mongoutils._
 import mongoutils.BSONObjectConversions._
 
+import org.json4s._
+import org.json4s.JsonDSL._
+import org.json4s.native.JsonMethods._
+
 object RemoteControlLatch {
     val latch = new java.util.concurrent.atomic.AtomicInteger(0)
 }
@@ -40,6 +44,7 @@ case class RemoteControlledStringNormalizationReaction(from:String, to:String) e
         }))
     }
     def toLabel = s"normalize <i>$from</i> as <i>$to</i>"
+    def toJson = ("remote" -> "control")
 }
 
 class WorkerSpec extends TestKit(ActorSystem("workerspec"))
