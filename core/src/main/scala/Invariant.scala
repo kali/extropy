@@ -15,10 +15,6 @@ import mongoutils.BSONObjectConversions._
 
 import com.typesafe.scalalogging.slf4j.StrictLogging
 
-import org.json4s._
-import org.json4s.JsonDSL._
-import org.json4s.native.JsonMethods._
-
 abstract sealed class Change {
     def writtenCollection:String
     def play(payloadMongo:MongoClient):WriteResult
@@ -118,61 +114,62 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
         tieEffectContainerMonitoredFields.flatMap( _.monitor(op) ) ++
         MonitoredField(effectContainer, "_id").monitor(op)
 
-    def toJson:JObject = ( effectContainer.toJsonFieldName -> tie.toJson(reactionContainer) ) ~
-            reactions.map { case(k,v) => ( k -> v.toJson ) }
+    def toMongo = effectContainer.toMongo match {
+        case a:String => MongoDBObject(a -> tie.toMongo(reactionContainer)) ++ MongoDBObject(reactions.mapValues { _.toMongo }.toList)
+    }
 }
 
 object Rule {
 
-    def containerFromJson(spec:JValue):Container = spec match {
-            case a:JString => a.values.count( _=='.' ) match {
-                case 1 => TopLevelContainer(a.values)
-                case 2 => NestedContainer(  TopLevelContainer(a.values.split('.').take(2).mkString(".")),
-                                            a.values.split('.').last)
+    def containerFromJson(spec:AnyRef):Container = spec match {
+            case a:String => a.count( _=='.' ) match {
+                case 1 => TopLevelContainer(a)
+                case 2 => NestedContainer(  TopLevelContainer(a.split('.').take(2).mkString(".")),
+                                            a.split('.').last)
             }
-            case _ => throw new Error(s"can't parse container spec:" + compact(render(spec)))
+            case _ => throw new Error(s"can't parse container spec:" + spec)
         }
 
-    def fromJson(j:JObject):Rule = {
-        val (effectContainer,tieSpec,rest):(Container,JValue,JObject)  = {
-            val firstKey:String = j.obj.head._1
+    def fromMongo(j:MongoDBObject):Rule = {
+        val (effectContainer,tieSpec,rest):(Container,AnyRef,MongoDBObject)  = {
+            val firstKey:String = j.keys.head
             if(firstKey == "from")
                 throw new Error()
             else {
-                (containerFromJson(firstKey), j.obj.head._2, j.obj.drop(1))
+                (containerFromJson(firstKey), j.values.head, MongoDBObject(j.toSeq.drop(1):_*))
             }
         }
         val (tie,reactionContainer):(Tie,Container) = tieSpec match {
-            case JString("same") => (SameDocumentTie(), effectContainer)
-            case o:JObject => o.obj.head._1 match {
+            case "same" => (SameDocumentTie(), effectContainer)
+            case o:BSONObject => o.keys.head match {
                 case "unwind" =>
-                    val name:String = o.obj.head._2.asInstanceOf[JString].values
+                    val name:String = o.values.head.asInstanceOf[String]
                     (SubDocumentTie(name), NestedContainer(effectContainer.asInstanceOf[TopLevelContainer], name))
                 case "follow" =>
-                    val follow:String = o.obj.head._2.asInstanceOf[JString].values
-                    val to = containerFromJson(JString(o.values("to").asInstanceOf[String]))
+                    val follow:String = o.values.head.asInstanceOf[String]
+                    val to = containerFromJson(o.get("to"))
                     (FollowKeyTie(follow), to)
                 case "search" =>
-                    val search:Container = containerFromJson(o.obj.head._2)
-                    val by = o.values("by").asInstanceOf[String]
+                    val search:Container = containerFromJson(o.values.head)
+                    val by = o.get("by").asInstanceOf[String]
                     (ReverseKeyTie(by), search)
-                case _ => throw new Error(s"can't parse tie spec:" + compact(render(tieSpec)))
+                case _ => throw new Error(s"can't parse tie spec:" + tieSpec)
             }
-            case _ => throw new Error(s"can't parse tie spec:" + compact(render(tieSpec)))
+            case _ => throw new Error(s"can't parse tie spec:" + tieSpec)
         }
-        val reactions:Map[String,Reaction] = rest.obj.map { case(name, value) => (name -> (value match {
-                case JString(from) => CopyFieldsReaction(from)
-                case o:JObject => o.obj.head._1 match {
+        val reactions:Map[String,Reaction] = rest.map { case(name, value) => (name -> (value match {
+                case from:String => CopyFieldsReaction(from)
+                case o:BSONObject => o.keys.head match {
                     case "mvel" => MVELReaction(
-                        o.values("mvel").asInstanceOf[String],
-                        o.values.get("using").getOrElse(List()).asInstanceOf[List[String]]
+                        o.get("mvel").asInstanceOf[String],
+                        o.getAs[List[String]]("using").getOrElse(List())
                     )
                     case "class" =>
                         val classLoader = getClass.getClassLoader
-                        classLoader.loadClass(o.values("class").asInstanceOf[String]).newInstance.asInstanceOf[Reaction]
+                        classLoader.loadClass(o.getAs[String]("class").get).newInstance.asInstanceOf[Reaction]
                     case "count" => CountReaction()
                 }
-                case _ => throw new Error(s"can't parse expression: " + compact(render(value)))
+                case _ => throw new Error(s"can't parse expression: " + value)
             }))
         }.toMap
         Rule(effectContainer, reactionContainer, tie, reactions)
@@ -185,7 +182,7 @@ abstract class Container {
     def asLocation:ResolvedLocation
     def monitor(field:String, op:Change):Set[ResolvedLocation]
     def toLabel:String
-    def toJsonFieldName:String
+    def toMongo:AnyRef
 }
 
 
@@ -222,7 +219,7 @@ case class TopLevelContainer(collectionFullName:String) extends Container {
     def toLabel = s"<i>$collectionFullName</i>"
     override def toString = collectionFullName
 
-    def toJsonFieldName:String = collectionFullName
+    def toMongo:String = collectionFullName
 }
 
 case class NestedContainer(parent:TopLevelContainer, arrayField:String) extends Container {
@@ -247,7 +244,7 @@ case class NestedContainer(parent:TopLevelContainer, arrayField:String) extends 
             case _ => Set()
         })
     def toLabel = s"<i>$parent.$arrayField</i>"
-    def toJsonFieldName:String = parent.collectionFullName + "." + arrayField
+    def toMongo:String = parent.collectionFullName + "." + arrayField
 }
 
 // TIE
@@ -261,7 +258,7 @@ abstract class Tie {
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location]
 
     def toLabel:String
-    def toJson(reactionContainer:Container):JValue
+    def toMongo(reactionContainer:Container):AnyRef
 }
 
 case class SameDocumentTie() extends Tie {
@@ -272,7 +269,7 @@ case class SameDocumentTie() extends Tie {
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location] = Some(location)
 
     def toLabel = "from the same document in"
-    def toJson(reactionContainer:Container) = "same"
+    def toMongo(reactionContainer:Container) = "same"
 }
 
 case class FollowKeyTie(localFieldName:String) extends Tie {
@@ -298,9 +295,9 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
         }
     }
     def toLabel = s"following <i>$localFieldName</i> to"
-    def toJson(reactionContainer:Container) =
-        ( "follow" -> localFieldName) ~
-        ( "to" -> reactionContainer.toJsonFieldName)
+    def toMongo(reactionContainer:Container) = MongoDBObject(
+        "follow" -> localFieldName, "to" -> reactionContainer.toMongo
+    )
 }
 
 case class ReverseKeyTie(reactionFieldName:String) extends Tie {
@@ -326,9 +323,9 @@ case class ReverseKeyTie(reactionFieldName:String) extends Tie {
         Traversable(ShakyLocation(q))
     }
     def toLabel = s"searching by <i>$reactionFieldName</i> in"
-    def toJson(reactionContainer:Container) =
-        ( "search" -> reactionContainer.toJsonFieldName) ~
-        ( "by" -> reactionFieldName)
+    def toMongo(reactionContainer:Container) = MongoDBObject(
+        "search" -> reactionContainer.toMongo, "by" -> reactionFieldName
+    )
 }
 
 case class SubDocumentTie(fieldName:String) extends Tie {
@@ -350,7 +347,7 @@ case class SubDocumentTie(fieldName:String) extends Tie {
         case SimpleNestedLocation(_, k, v) => Some(SimpleFilterLocation(rule.effectContainer.asInstanceOf[TopLevelContainer], k, v))
     }
     def toLabel = s"entering <i>$fieldName</i>"
-    def toJson(reactionContainer:Container) = ( "unwind" -> fieldName )
+    def toMongo(reactionContainer:Container) = MongoDBObject( "unwind" -> fieldName )
 }
 
 // REACTION
@@ -358,21 +355,21 @@ case class SubDocumentTie(fieldName:String) extends Tie {
     def reactionFields:Set[String]
     def process(data:Traversable[BSONObject]):Option[AnyRef]
     def toLabel:String
-    def toJson:JValue
+    def toMongo:AnyRef
 }
 
 case class CopyFieldsReaction(from:String) extends Reaction {
     val reactionFields:Set[String] = Set(from)
     def process(data:Traversable[BSONObject]) = data.headOption.flatMap(_.getAs[AnyRef](from))
     def toLabel = s"copy <i>$from</i>"
-    def toJson = from
+    def toMongo = from
 }
 
 case class CountReaction() extends Reaction {
     val reactionFields:Set[String] = Set()
     def process(data:Traversable[BSONObject]) = Some(data.size:java.lang.Integer)
     def toLabel = s"count"
-    def toJson = ("count" -> true)
+    def toMongo = MongoDBObject("count" -> true)
 }
 
 case class MVELReaction(expr:String, using:List[String]) extends Reaction {
@@ -389,7 +386,7 @@ case class MVELReaction(expr:String, using:List[String]) extends Reaction {
         }
     }
     def toLabel = s"normalize <i>$expr</i>"
-    def toJson = ("mvel" -> expr) ~ ("using" -> using)
+    def toMongo = MongoDBObject("mvel" -> expr, "using" -> using)
 }
 
 object StringNormalizationRule {
