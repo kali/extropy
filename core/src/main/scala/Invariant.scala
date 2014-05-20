@@ -7,11 +7,13 @@ import com.novus.salat._
 import com.novus.salat.annotations._
 import com.novus.salat.dao._
 
+import mongoutils.BSONObjectConversions._
+
 import scala.concurrent.duration._
 
 import mongoutils._
 
-import mongoutils.BSONObjectConversions._
+import com.novus.salat.transformers.CustomTransformer
 
 import com.typesafe.scalalogging.slf4j.StrictLogging
 
@@ -39,7 +41,8 @@ case class ModifiersUpdateChange(writtenCollection:String, selector:BSONObject, 
 
 case class Invariant(   _id:ObjectId, rule:Rule, emlp:MongoLock, statusChanging:Boolean=false,
                         status:InvariantStatus.Value=InvariantStatus.Created,
-                        command:Option[InvariantStatus.Value]=None)
+                        command:Option[InvariantStatus.Value]=None) {
+}
 
 object Invariant {
     def apply(rule:Rule) = new Invariant(new ObjectId(), rule, MongoLock.empty)
@@ -57,6 +60,11 @@ case class MonitoredField(container:Container, field:String) {
     def monitor(op:Change):Set[ResolvedLocation] = {
         container.monitor(field, op)
     }
+}
+
+object RuleCodec extends CustomTransformer[Rule, DBObject] {
+    def deserialize(o:DBObject) = Rule.fromMongo(o)
+    def serialize(r:Rule) = r.toMongo
 }
 
 case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie, reactions:Map[String,Reaction])
@@ -114,14 +122,15 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
         tieEffectContainerMonitoredFields.flatMap( _.monitor(op) ) ++
         MonitoredField(effectContainer, "_id").monitor(op)
 
-    def toMongo = effectContainer.toMongo match {
-        case a:String => MongoDBObject(a -> tie.toMongo(reactionContainer)) ++ MongoDBObject(reactions.mapValues { _.toMongo }.toList)
+    def toMongo = {
+        val rule:MongoDBObject = MongoDBObject("from" -> effectContainer.toMongo) ++ MongoDBObject(tie.toMongo(reactionContainer).toList)
+        MongoDBObject("rule" -> rule) ++ MongoDBObject(reactions.mapValues { _.toMongo }.toList)
     }
 }
 
 object Rule {
 
-    def containerFromJson(spec:AnyRef):Container = spec match {
+    def containerFromMongo(spec:AnyRef):Container = spec match {
             case a:String => a.count( _=='.' ) match {
                 case 1 => TopLevelContainer(a)
                 case 2 => NestedContainer(  TopLevelContainer(a.split('.').take(2).mkString(".")),
@@ -131,33 +140,22 @@ object Rule {
         }
 
     def fromMongo(j:MongoDBObject):Rule = {
-        val (effectContainer,tieSpec,rest):(Container,AnyRef,MongoDBObject)  = {
-            val firstKey:String = j.keys.head
-            if(firstKey == "from")
-                throw new Error()
-            else {
-                (containerFromJson(firstKey), j.values.head, MongoDBObject(j.toSeq.drop(1):_*))
-            }
+        val (effectContainer,tieSpec):(Container,MongoDBObject)  = {
+            val rule:MongoDBObject = j.getAs[MongoDBObject]("rule").get
+            (containerFromMongo(rule("from")), rule - "from")
         }
-        val (tie,reactionContainer):(Tie,Container) = tieSpec match {
+        val (tie,reactionContainer):(Tie,Container) = tieSpec.keys.head match {
             case "same" => (SameDocumentTie(), effectContainer)
-            case o:BSONObject => o.keys.head match {
-                case "unwind" =>
-                    val name:String = o.values.head.asInstanceOf[String]
-                    (SubDocumentTie(name), NestedContainer(effectContainer.asInstanceOf[TopLevelContainer], name))
-                case "follow" =>
-                    val follow:String = o.values.head.asInstanceOf[String]
-                    val to = containerFromJson(o.get("to"))
-                    (FollowKeyTie(follow), to)
-                case "search" =>
-                    val search:Container = containerFromJson(o.values.head)
-                    val by = o.get("by").asInstanceOf[String]
-                    (ReverseKeyTie(by), search)
-                case _ => throw new Error(s"can't parse tie spec:" + tieSpec)
-            }
+            case "unwind" =>
+                val name = tieSpec.as[String]("unwind")
+                (SubDocumentTie(name), NestedContainer(effectContainer.asInstanceOf[TopLevelContainer], name))
+            case "follow" =>
+                (FollowKeyTie(tieSpec.as[String]("follow")), containerFromMongo(tieSpec.as[String]("to")))
+            case "search" =>
+                (ReverseKeyTie(tieSpec.as[String]("by")), containerFromMongo(tieSpec.as[String]("search")))
             case _ => throw new Error(s"can't parse tie spec:" + tieSpec)
         }
-        val reactions:Map[String,Reaction] = rest.map { case(name, value) => (name -> (value match {
+        val reactions:Map[String,Reaction] = (j-"rule").map { case(name, value) => (name -> (value match {
                 case from:String => CopyFieldsReaction(from)
                 case o:BSONObject => o.keys.head match {
                     case "mvel" => MVELReaction(
@@ -177,7 +175,6 @@ object Rule {
 }
 // CONTAINERS
 
-@Salat
 abstract class Container {
     def asLocation:ResolvedLocation
     def monitor(field:String, op:Change):Set[ResolvedLocation]
@@ -219,7 +216,7 @@ case class TopLevelContainer(collectionFullName:String) extends Container {
     def toLabel = s"<i>$collectionFullName</i>"
     override def toString = collectionFullName
 
-    def toMongo:String = collectionFullName
+    def toMongo:AnyRef = collectionFullName
 }
 
 case class NestedContainer(parent:TopLevelContainer, arrayField:String) extends Container {
@@ -244,12 +241,11 @@ case class NestedContainer(parent:TopLevelContainer, arrayField:String) extends 
             case _ => Set()
         })
     def toLabel = s"<i>$parent.$arrayField</i>"
-    def toMongo:String = parent.collectionFullName + "." + arrayField
+    def toMongo:AnyRef = parent.collectionFullName + "." + arrayField
 }
 
 // TIE
 
-@Salat
 abstract class Tie {
     def reactionContainerMonitoredFields:Set[String]
     def effectContainerMonitoredFields:Set[String]
@@ -258,7 +254,7 @@ abstract class Tie {
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location]
 
     def toLabel:String
-    def toMongo(reactionContainer:Container):AnyRef
+    def toMongo(reactionContainer:Container):MongoDBObject
 }
 
 case class SameDocumentTie() extends Tie {
@@ -269,7 +265,7 @@ case class SameDocumentTie() extends Tie {
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location] = Some(location)
 
     def toLabel = "from the same document in"
-    def toMongo(reactionContainer:Container) = "same"
+    def toMongo(reactionContainer:Container) = MongoDBObject("same" -> reactionContainer.toMongo)
 }
 
 case class FollowKeyTie(localFieldName:String) extends Tie {
@@ -351,7 +347,7 @@ case class SubDocumentTie(fieldName:String) extends Tie {
 }
 
 // REACTION
-@Salat abstract class Reaction {
+abstract class Reaction {
     def reactionFields:Set[String]
     def process(data:Traversable[BSONObject]):Option[AnyRef]
     def toLabel:String
@@ -396,6 +392,7 @@ object StringNormalizationRule {
 }
 
 class InvariantDAO(val db:MongoDB, val lockDuration:FiniteDuration)(implicit ctx: com.novus.salat.Context) {
+    val serializer = RuleCodec
     val collection = db("invariants")
     val salat = new SalatDAO[Invariant,ObjectId](collection) {}
     val mlp = MongoLockingPool(collection, lockDuration)

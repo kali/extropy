@@ -11,11 +11,11 @@ class MongoRuleSpec extends FlatSpec with Matchers {
     def m[A <: String, B] (elems: (A, B)*) : DBObject = MongoDBObject(elems:_*)
     import fixture._
 
-    behavior of "Rule json serializer"
+    behavior of "Rule mongo serializer"
 
     it should "serialize searchableTitleRule" in {
         searchableTitleRule.toMongo should be( MongoDBObject(
-            "blog.posts" -> "same",
+            "rule" -> MongoDBObject("from" -> "blog.posts", "same" -> "blog.posts"),
             "searchableTitle" -> MongoDBObject(
                 "mvel" -> "title.toLowerCase()",
                 "using" -> List("title")
@@ -25,46 +25,40 @@ class MongoRuleSpec extends FlatSpec with Matchers {
 
     it should "serialize authorNameInPostRule" in {
         authorNameInPostRule.toMongo should be ( MongoDBObject(
-            "blog.posts" -> MongoDBObject( "follow" -> "authorId", "to" -> "blog.users" ),
+            "rule" -> MongoDBObject("from" -> "blog.posts", "follow" -> "authorId", "to" -> "blog.users" ),
             "authorName" -> "name"
         ))
     }
 
     it should "serialize postCountInUserRule" in {
         postCountInUserRule.toMongo should be ( MongoDBObject(
-            "blog.users" -> MongoDBObject(
-                "search" -> "blog.posts",
-                "by" -> "authorId"),
+            "rule" -> MongoDBObject("from" -> "blog.users", "search" -> "blog.posts", "by" -> "authorId"),
             "postCount" -> MongoDBObject("count" -> true)
         ))
     }
 
     it should "serialize commentCountInUserRule" in {
         commentCountInUserRule.toMongo should be ( MongoDBObject(
-            "blog.users" -> MongoDBObject(
-                "search" -> "blog.posts.comments",
-                "by" -> "authorId"),
+            "rule" -> MongoDBObject("from" -> "blog.users", "search" -> "blog.posts.comments", "by" -> "authorId"),
             "commentCount" -> MongoDBObject( "count" -> true )
         ))
     }
 
     it should "serialize authorNameInCommentRule" in {
         authorNameInCommentRule.toMongo should be ( MongoDBObject(
-            "blog.posts.comments" -> MongoDBObject(
-                "follow" -> "authorId",
-                "to" -> "blog.users"),
+            "rule" -> MongoDBObject("from" -> "blog.posts.comments", "follow" -> "authorId", "to" -> "blog.users"),
             "authorName" -> "name"
         ))
     }
 
     it should "serialize commentCountInPostRule" in {
         commentCountInPostRule.toMongo should be ( MongoDBObject(
-            "blog.posts" -> MongoDBObject("unwind" -> "comments"),
+            "rule" -> MongoDBObject("from" -> "blog.posts", "unwind" -> "comments"),
             "commentCount" -> MongoDBObject("count" -> true)
         ))
     }
 
-    behavior of "Rule json de-serializer"
+    behavior of "Rule mongo de-serializer"
 
     it should "de serialize searchableTitleRule" in {
         Rule.fromMongo(searchableTitleRule.toMongo) should be(searchableTitleRule)

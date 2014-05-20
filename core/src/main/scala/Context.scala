@@ -7,13 +7,23 @@ import com.mongodb.casbah.Imports._
 import com.novus.salat._
 import com.novus.salat.annotations._
 import com.novus.salat.dao._
-import com.novus.salat.global._
 
 import scala.concurrent.duration._
 
 import mongoutils._
 
 import BSONObjectConversions._
+
+package object custom {
+  implicit val ctx = new Context() {
+    val name = "custom_transformer_spec"
+    override val typeHintStrategy = StringTypeHintStrategy(TypeHintFrequency.WhenNecessary, "_t")
+    registerCustomTransformer(RuleCodec)
+  }
+}
+
+import custom.ctx
+
 
 trait BaseExtropyContext {
     val hostname = java.net.InetAddress.getLocalHost.getHostName
