@@ -63,17 +63,17 @@ case class MonitoredField(container:Container, field:String) {
     }
 }
 
-case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie, reaction:Reaction)
+case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie, reactions:Map[String,Reaction])
         extends StrictLogging {
-    val reactionFields:Set[MonitoredField] =
-            reaction.reactionFields.map( MonitoredField(reactionContainer, _) )
+    val reactionsFields:Set[MonitoredField] =
+            reactions.values.flatMap(_.reactionFields.map(MonitoredField(reactionContainer, _) ) ).toSet
     val tieEffectContainerMonitoredFields:Set[MonitoredField] =
             tie.effectContainerMonitoredFields.map( MonitoredField(effectContainer, _) )
     val tieReactionContainerMonitoredFields:Set[MonitoredField] =
             tie.reactionContainerMonitoredFields.map( MonitoredField(reactionContainer, _) )
 
     val monitoredFields:Set[MonitoredField] =
-            reactionFields ++ tieEffectContainerMonitoredFields ++
+            reactionsFields ++ tieEffectContainerMonitoredFields ++
             tieReactionContainerMonitoredFields + MonitoredField(effectContainer, "_id")
 
     def alterWrite(op:Change):Change = op // tie.alterWrite(this, op)
@@ -87,7 +87,7 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
         val propagated = tie.propagate(this, location)
         val resolved = propagated.resolve(payloadMongo)
         val reactant = resolved.flatMap( _.iterator(payloadMongo) ).map( _.data )
-        val effects = reaction.process(reactant)
+        val effects = reactions.mapValues( _.process(reactant) ).toMap
         location.setValues(payloadMongo, effects)
     }
 
@@ -96,15 +96,15 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
     def checkOne(payloadMongo:MongoClient, location:ResolvedLocation):Traversable[Mismatch] = {
         val reactant = tie.propagate(this, location).resolve(payloadMongo)
                 .flatMap( _.iterator(payloadMongo) ).map( _.data )
-        val effects = reaction.process(reactant)
+        val effects = reactions.mapValues( _.process(reactant) )
         location.iterator(payloadMongo).flatMap { targetDbo =>
             val target = new MongoDBObject(targetDbo.data)
             new MongoDBObject(effects).flatMap{ case (k,v) =>
                 val got = target.getAs[AnyRef](k)
-                if(got != Option(v))
-                    Some(Mismatch(k,Option(v),got))
-                else
+                if(got == Option(v) || (got == Some(None) && v == null))
                     None
+                else
+                    Some(Mismatch(k,Option(v),got))
             }
         }
     }
@@ -113,14 +113,71 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
         effectContainer.asLocation.iterator(payloadMongo).flatMap( loc => checkOne(payloadMongo, loc).map( (loc,_) ) )
 
     def dirtiedSet(op:Change):Set[Location] =
-        reactionFields.flatMap( _.monitor(op) ).flatMap( tie.backPropagate(this, _) ) ++
+        reactionsFields.flatMap( _.monitor(op) ).flatMap( tie.backPropagate(this, _) ) ++
         tieReactionContainerMonitoredFields.flatMap( _.monitor(op) ).flatMap( tie.backPropagate(this, _) ) ++
         tieEffectContainerMonitoredFields.flatMap( _.monitor(op) ) ++
         MonitoredField(effectContainer, "_id").monitor(op)
 
-    def toJson:JObject = ( effectContainer.toJsonFieldName -> tie.toJson(reactionContainer) ) ~ reaction.toJson
+    def toJson:JObject = ( effectContainer.toJsonFieldName -> tie.toJson(reactionContainer) ) ~
+            reactions.map { case(k,v) => ( k -> v.toJson ) }
 }
 
+object Rule {
+
+    def containerFromJson(spec:JValue):Container = spec match {
+            case a:JString => a.values.count( _=='.' ) match {
+                case 1 => TopLevelContainer(a.values)
+                case 2 => NestedContainer(  TopLevelContainer(a.values.split('.').take(2).mkString(".")),
+                                            a.values.split('.').last)
+            }
+            case _ => throw new Error(s"can't parse container spec:" + compact(render(spec)))
+        }
+
+    def fromJson(j:JObject):Rule = {
+        val (effectContainer,tieSpec,rest):(Container,JValue,JObject)  = {
+            val firstKey:String = j.obj.head._1
+            if(firstKey == "from")
+                throw new Error()
+            else {
+                (containerFromJson(firstKey), j.obj.head._2, j.obj.drop(1))
+            }
+        }
+        val (tie,reactionContainer):(Tie,Container) = tieSpec match {
+            case JString("same") => (SameDocumentTie(), effectContainer)
+            case o:JObject => o.obj.head._1 match {
+                case "unwind" =>
+                    val name:String = o.obj.head._2.asInstanceOf[JString].values
+                    (SubDocumentTie(name), NestedContainer(effectContainer.asInstanceOf[TopLevelContainer], name))
+                case "follow" =>
+                    val follow:String = o.obj.head._2.asInstanceOf[JString].values
+                    val to = containerFromJson(JString(o.values("to").asInstanceOf[String]))
+                    (FollowKeyTie(follow), to)
+                case "search" =>
+                    val search:Container = containerFromJson(o.obj.head._2)
+                    val by = o.values("by").asInstanceOf[String]
+                    (ReverseKeyTie(by), search)
+                case _ => throw new Error(s"can't parse tie spec:" + compact(render(tieSpec)))
+            }
+            case _ => throw new Error(s"can't parse tie spec:" + compact(render(tieSpec)))
+        }
+        val reactions:Map[String,Reaction] = rest.obj.map { case(name, value) => (name -> (value match {
+                case JString(from) => CopyFieldsReaction(from)
+                case o:JObject => o.obj.head._1 match {
+                    case "mvel" => MVELReaction(
+                        o.values("mvel").asInstanceOf[String],
+                        o.values.get("using").getOrElse(List()).asInstanceOf[List[String]]
+                    )
+                    case "class" =>
+                        val classLoader = getClass.getClassLoader
+                        classLoader.loadClass(o.values("class").asInstanceOf[String]).newInstance.asInstanceOf[Reaction]
+                    case "count" => CountReaction()
+                }
+                case _ => throw new Error(s"can't parse expression: " + compact(render(value)))
+            }))
+        }.toMap
+        Rule(effectContainer, reactionContainer, tie, reactions)
+    }
+}
 // CONTAINERS
 
 @Salat
@@ -130,6 +187,7 @@ abstract class Container {
     def toLabel:String
     def toJsonFieldName:String
 }
+
 
 case class TopLevelContainer(collectionFullName:String) extends Container {
     val dbName = collectionFullName.split('.').head
@@ -298,45 +356,46 @@ case class SubDocumentTie(fieldName:String) extends Tie {
 // REACTION
 @Salat abstract class Reaction {
     def reactionFields:Set[String]
-    def process(data:Traversable[BSONObject]):BSONObject
+    def process(data:Traversable[BSONObject]):Option[AnyRef]
     def toLabel:String
-    def toJson:JObject
+    def toJson:JValue
 }
 
-case class CopyField(from:String, to:String)
-case class CopyFieldsReaction(fields:List[CopyField]) extends Reaction {
-    val reactionFields:Set[String] = fields.map( _.from ).toSet
-    def process(data:Traversable[BSONObject]) = data.headOption.map { doc =>
-        MongoDBObject(fields.map { pair => (pair.to, doc.getAs[AnyRef](pair.from)) })
-    }.getOrElse(MongoDBObject.empty)
-    def toLabel = "copy " + fields.map( f => "<i>%s</i> as <i>%s</i>".format(f.from, f.to) ).mkString(", ")
-    def toJson = JObject(fields.map( f => JField(f.to,f.from) ))
-}
-
-case class CountReaction(field:String) extends Reaction {
-    val reactionFields:Set[String] = Set()
-    def process(data:Traversable[BSONObject]) = MongoDBObject(field -> data.size)
-    def toLabel = s"count as <i>$field</i>"
-    def toJson = (field -> ("count" -> true))
-}
-
-// FOR TESTS
-
-case class StringNormalizationReaction(from:String, to:String) extends Reaction {
+case class CopyFieldsReaction(from:String) extends Reaction {
     val reactionFields:Set[String] = Set(from)
-    def process(data:Traversable[BSONObject]) = Map(to -> (data.headOption match {
-        case Some(obj) => obj.get(from).toString.toLowerCase
-        case None => null
-    }))
-    def toLabel = s"normalize <i>$from</i> as <i>$to</i>"
-    def toJson = (to -> ("eval" -> s"$from.toLowerCase") ~ ("using" -> List(from)))
+    def process(data:Traversable[BSONObject]) = data.headOption.flatMap(_.getAs[AnyRef](from))
+    def toLabel = s"copy <i>$from</i>"
+    def toJson = from
 }
 
+case class CountReaction() extends Reaction {
+    val reactionFields:Set[String] = Set()
+    def process(data:Traversable[BSONObject]) = Some(data.size:java.lang.Integer)
+    def toLabel = s"count"
+    def toJson = ("count" -> true)
+}
+
+case class MVELReaction(expr:String, using:List[String]) extends Reaction {
+    import org.mvel2.MVEL
+    val reactionFields:Set[String] = using.toSet
+    val compiled =  MVEL.compileExpression(expr)
+    def process(data:Traversable[BSONObject]) = data.headOption.map { doc =>
+        try {
+            MVEL.executeExpression(compiled, scala.collection.JavaConversions.mapAsJavaMap(doc))
+        } catch {
+            case a:Throwable =>
+                System.err.println(a)
+                throw a
+        }
+    }
+    def toLabel = s"normalize <i>$expr</i>"
+    def toJson = ("mvel" -> expr) ~ ("using" -> using)
+}
 
 object StringNormalizationRule {
     def apply(collection:String, from:String, to:String) =
         Rule(TopLevelContainer(collection), TopLevelContainer(collection), SameDocumentTie(),
-                StringNormalizationReaction(from,to))
+                Map(to -> MVELReaction(s"$from.toLowerCase()", List(from))))
 }
 
 class InvariantDAO(val db:MongoDB, val lockDuration:FiniteDuration)(implicit ctx: com.novus.salat.Context) {

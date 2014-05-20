@@ -41,7 +41,7 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
 
     behavior of "fix one..."
 
-    it should "fixOne searchableTitle" in {
+    it should "fixOne searchableTitle" taggedAs(Tag("r")) in {
         mongoBackendClient(dbName).dropDatabase
         mongoBackendClient(dbName)("posts").insert(post1)
         searchableTitleRule.fixOne(mongoBackendClient, IdLocation(posts,"post1"))

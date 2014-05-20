@@ -22,29 +22,27 @@ import org.json4s.native.JsonMethods._
 
 object RemoteControlLatch {
     val latch = new java.util.concurrent.atomic.AtomicInteger(0)
+    def getLatch = latch
 }
 
-object RemoteControledSyncRule {
-    def apply(col:String) =
-        Rule(TopLevelContainer(col), TopLevelContainer(col), SameDocumentTie(),
-                RemoteControlledStringNormalizationReaction("foo", "bar"))
-}
-
-case class RemoteControlledStringNormalizationReaction(from:String, to:String) extends Reaction {
-    val reactionFields:Set[String] = Set(from)
+case class RemoteControlledStringNormalizationReaction() extends Reaction {
+    val reactionFields:Set[String] = Set()
     def process(data:Traversable[BSONObject]) = {
         if(RemoteControlLatch.latch.get() == 0) {
             RemoteControlLatch.latch.set(1)
             while(RemoteControlLatch.latch.get() < 2)
                 Thread.sleep(10)
         }
-        Map(to -> (data.headOption match {
-            case Some(obj) => obj.getAs[String](from).getOrElse("").toString.toLowerCase
-            case None => null
-        }))
+        Some("bar")
     }
-    def toLabel = s"normalize <i>$from</i> as <i>$to</i>"
+    def toLabel = s"remote controlled"
     def toJson = ("remote" -> "control")
+}
+
+object RemoteControledSyncRule {
+    def apply(col:String) =
+        Rule(TopLevelContainer(col), TopLevelContainer(col), SameDocumentTie(),
+                Map("foo" -> new RemoteControlledStringNormalizationReaction()))
 }
 
 class WorkerSpec extends TestKit(ActorSystem("workerspec"))

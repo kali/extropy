@@ -14,21 +14,21 @@ case class BlogFixtures(dbName:String) {
     val comments = NestedContainer(posts, "comments")
 
     // some rules
-    val searchableTitleRule = Rule(     posts, posts,
-                                        SameDocumentTie(), StringNormalizationReaction("title", "searchableTitle"))
+    val searchableTitleRule = Rule(     posts, posts, SameDocumentTie(),
+                                        Map("searchableTitle" -> MVELReaction(s"title.toLowerCase()", List("title"))))
 
     val authorNameInPostRule = Rule(    posts, users, FollowKeyTie("authorId"),
-                                        CopyFieldsReaction(List(CopyField("name", "authorName"))))
+                                        Map("authorName" -> CopyFieldsReaction("name")))
 
-    val postCountInUserRule = Rule(     users, posts, ReverseKeyTie("authorId"), CountReaction("postCount"))
+    val postCountInUserRule = Rule(     users, posts, ReverseKeyTie("authorId"), Map("postCount" -> CountReaction()))
 
 
-    val commentCountInUserRule = Rule(  users, comments, ReverseKeyTie("authorId"), CountReaction("commentCount"))
+    val commentCountInUserRule = Rule(  users, comments, ReverseKeyTie("authorId"), Map("commentCount" -> CountReaction()))
 
     val authorNameInCommentRule = Rule( comments, users, FollowKeyTie("authorId"),
-                                        CopyFieldsReaction(List(CopyField("name", "authorName"))))
+                                        Map("authorName" -> CopyFieldsReaction("name")))
 
-    val commentCountInPostRule = Rule(  posts, comments, SubDocumentTie("comments"), CountReaction("commentCount") )
+    val commentCountInPostRule = Rule(  posts, comments, SubDocumentTie("comments"), Map("commentCount" -> CountReaction()))
 
     val allRules = Array( searchableTitleRule, authorNameInPostRule, postCountInUserRule,
         commentCountInUserRule, authorNameInCommentRule, commentCountInPostRule)
