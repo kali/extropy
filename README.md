@@ -79,7 +79,71 @@ a plain copy, while objects denotes more complex operations.
 
 ## Run the example
 
-[TODO]
+You need java in your $PATH. I use version jdk 8, but 6 and 7 should be ok.
+You'll also need a MongoDB server you can safely play with, and I'll be using the mongo client to demounstrate the
+main features.
+
+Compile and run the proxy:
+
+````shell
+git clone https://github.com/kali/extropy.git
+cd extropy
+./sbt "agent/run --help"
+````
+
+If you're not a regular sbt or maven user, it may take a while, but you should evantually, you should get a list
+of options.
+
+```
+./sbt "agent/run --listen localhost:27000 --payload localhost:27017"
+```
+
+payload must target the mongodb where the actual data lives.
+extropy will generate a database in it (called... "extropy") to store rules definitions and handle communication
+between the various proxy and workers of your system.
+You can use --extropy to specify an alternate location (it can be an entirely separate server)
+
+From this point, you should always connect to mongodb through the proxy. Let's start by populating our blog database:
+
+````
+% mongo localhost:27000/blog
+db.posts.save({ "_id" : "post1", "title" : "Title for Post 1", "authorId" : "liz" })
+db.posts.save({ "_id" : "post2", "title" : "Title for Post 2", "authorId" : "liz", "comments" : [ { "_id" : "comment1", "authorId" : "jack" } ]  })
+db.users.save({ "_id" : "jack", "name" : "John Francis \"Jack\" Donaghy" })
+db.users.save({ "_id" : "liz", "name" : "Elizabeth Lemon" })
+````
+
+So far so good. The proxy has no rules defined yet, so it does nothing out of the ordinary.
+If you find() the documents, they are just as you are expecting them.
+
+Let's define out rule. We need to call a command on extropy. The syntax may look a bit convoluted, but it mimicks
+the way mongodb does "runCommand" under the hood.
+
+````
+db.$extropy.findOne({ "addRule": { "rule" : { "from" : "blog.posts", "follow" : "authorId", "to" : "blog.users" }, "authorName" : "name" }} )
+````
+
+The proxy output may spew a few lines to state that it actually performed a Sync on a new rule, and you can verify
+the result:
+
+````
+db.posts.find()
+{ "_id" : "post1", "title" : "Title for Post 1", "authorId" : "liz", "authorName" : "Elizabeth Lemon" }
+{ "_id" : "post2", "title" : "Title for Post 2", "authorId" : "liz", "comments" : [ { "_id" : "comment1", "authorId" : "jack" } ], "authorName" : "Elizabeth Lemon" }
+````
+
+Now you can try and perform updates: 
+````
+db.posts.update({_id: "post1"}, { "$set" : { authorId: "jack" }})
+db.users.update({_id: "liz"}, { "$set" : { name: "Liz Lemon" }})
+{ "_id" : "post1", "title" : "Title for Post 1", "authorId" : "liz", "authorName" : "Elizabeth Lemon" }
+{ "_id" : "post2", "title" : "Title for Post 2", "authorId" : "liz", "comments" : [ { "_id" : "comment1", "authorId" : "jack" } ], "authorName" : "Elizabeth Lemon" }
+db.posts.find()
+{ "_id" : "post1", "title" : "Title for Post 1", "authorId" : "jack", "authorName" : "John Francis \"Jack\" Donaghy" }
+{ "_id" : "post2", "title" : "Title for Post 2", "authorId" : "liz", "comments" : [ { "_id" : "comment1", "authorId" : "jack" } ], "authorName" : "Liz Lemon" }
+````
+
+Both changes (authorId on post1 and author full name for liz) have been entirely propagated.
 
 ## Current status, roadmap
 
@@ -98,6 +162,7 @@ Here is a non-exhaustive list of well-defined (at least in my mind) features in 
     * createdAt, updateAt [easy to medium]
     * support denormalization depending on other denormalized data [hard]
 * proxy features and consistency level
+    * provide a extropy.rc defining short cuts to run command against the proxy [easy]
     * proxy post-writes async: will return faster, but will be only "probably" consistent [medium]
     * warrant eventual consistency for proxied ops [medium]
     * proxy consistency level switchable request-per-request (inspiration form mongodb write concern) [harder]
