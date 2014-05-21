@@ -7,6 +7,7 @@ import com.novus.salat._
 import com.novus.salat.annotations._
 import com.novus.salat.dao._
 
+import org.bson.BSONObject
 import mongoutils.BSONObjectConversions._
 
 import scala.concurrent.duration._
@@ -141,7 +142,7 @@ object Rule {
 
     def fromMongo(j:MongoDBObject):Rule = {
         val (effectContainer,tieSpec):(Container,MongoDBObject)  = {
-            val rule:MongoDBObject = j.getAs[MongoDBObject]("rule").get
+            val rule:MongoDBObject = j.getAs[BSONObject]("rule").get
             (containerFromMongo(rule("from")), rule - "from")
         }
         val (tie,reactionContainer):(Tie,Container) = tieSpec.keys.head match {

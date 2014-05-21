@@ -1,12 +1,17 @@
 package org.zoy.kali.extropy
 
 import akka.actor.{ ActorSystem, Actor, ActorRef, Props, Terminated }
+import akka.event.Logging
 import akka.util.{ ByteString, ByteIterator }
 
 import mongo._
 import mongoutils.BSONObjectConversions._
 
+import org.bson.BSONObject
 import com.mongodb.casbah.Imports._
+
+import com.novus.salat._
+import custom.ctx
 
 sealed abstract class Direction
 object Server extends Direction
@@ -23,6 +28,7 @@ object ExtropyProxyActor {
 class ExtropyProxyActor(    extropy:BaseExtropyContext,
                             optionalConfiguration:Option[DynamicConfiguration]) extends Actor {
 
+    val log = Logging(context.system, this)
     var logic = ExtropyProxyLogic(extropy, optionalConfiguration)
 
     var responseId:Int = 0
@@ -61,11 +67,26 @@ class ExtropyProxyActor(    extropy:BaseExtropyContext,
     }
 
     def handleExtropyCommand(op:OpQuery):OpReply = {
-        val command = op.query.keys.headOption.getOrElse("status")
-        command match {
-            case "status" => OpReply(0, 0, 0, 1, Stream(MongoDBObject("ok" -> 1)))
-            case "configVersion" => OpReply(0, 0, 0, 1,
-                            Stream(MongoDBObject("ok" -> 1, "version" -> logic.configuration.version)))
+        try {
+            val command = op.query.keys.headOption.getOrElse("status")
+            command match {
+                case "status" => OpReply(0, 0, 0, 1, Stream(MongoDBObject("ok" -> 1)))
+                case "configVersion" => OpReply(0, 0, 0, 1,
+                                Stream(MongoDBObject("ok" -> 1, "version" -> logic.configuration.version)))
+                case "addInvariant" =>
+                    extropy.invariantDAO.salat.collection.insert(op.query.as[BSONObject]("addInvariant"))
+                    extropy.agentDAO.bumpConfigurationVersion
+                    OpReply(0, 0, 0, 1, Stream(MongoDBObject("ok" -> 1)))
+                case "addRule" =>
+                    extropy.invariantDAO.salat.insert(Invariant(Rule.fromMongo(op.query.as[BSONObject]("addRule"))))
+                    extropy.agentDAO.bumpConfigurationVersion
+                    OpReply(0, 0, 0, 1, Stream(MongoDBObject("ok" -> 1)))
+                case _ => OpReply(0, 0, 0, 1, Stream(MongoDBObject("ok" -> 0, "message" -> "unknown command")))
+            }
+        } catch {
+                case e:Throwable =>
+                    log.error(e.toString, e)
+                    OpReply(0, 0, 0, 1, Stream(MongoDBObject("ok" -> 0, "message" -> e.toString)))
         }
     }
 }
