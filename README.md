@@ -75,18 +75,35 @@ containing the denormalization, to the source-of-authority document. Four "links
 Then comes one or several expressions describing what field are to be denormalized and how. A string value is
 a plain copy, while objects denotes more complex operations.
 
+## Run the example
+
+[TODO]
+
 ## Current limitations, roadmap
 
 * rules
     * support more tie types: 1-to-1 embedded, 1-to-1 by reference [easy]
     * support N-to-N ties: (ex: follower / followee) [medium]
-* proxy and consistency
+    * generalize aggregates "reactions": extropy has only "count" at the current point [medium]
+    * createdAt, updateAt [easy to medium]
+    * support denormalization depending on denormalized data [hard]
+* proxy features and consistency level
     * proxy post-writes async: will return faster, but will be only "probably" consistent [medium]
     * warrant eventual consistency for proxied ops [medium]
     * proxy consistency level switchable request-per-request (take inspiration form mongodb write concern) [harder]
-    * reject write altering directing denormalized fields [medium]
-* use cases I'd like to support: I want to make them painless, I'd like extropy to be able to deal with them
-    * multi-document eventual consistent transaction [medium]
+    * reject write altering directly denormalized fields [medium]
+    * reject write breaking foreign keys [medium]
+    * cascade delete [medium]
+* web admin interface
+    * pin invariant foreman to specific worker [medium]
+    * cron-like check / check-and-repair jobs [medium]
+
+* data use cases I'd like to fully support
     * hierarchical data: for instance, from a SOA based on immediate
-      parent (and order), maintain children array and searchable lineage [might be hard]
-    * "unbreakable" credit/withdraw and booking scenario (hiding necessarily two phase commits ops) [hard]
+        parent (and order), maintain children array and searchable lineage [medium to hard]
+    * multi-document eventual consistent transaction [medium]
+    * "command" pattern: one single insert to a "command" collection triggers various updates [hard]
+    * "changelog" pattern: store enough information on update to revert it, allowing to compute past state of database
+        [hard]
+    * "unbreakable" credit/withdraw and booking scenario (might be just a special case of command pattern) [hard]
+    * floating aggregates (for each user, maintain how many post / comments in the last day / week / ...) [hard]
