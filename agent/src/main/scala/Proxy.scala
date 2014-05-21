@@ -4,6 +4,7 @@ import akka.actor.{ ActorSystem, Actor, ActorRef, Props, Terminated }
 import akka.util.{ ByteString, ByteIterator }
 
 import mongo._
+import mongoutils.BSONObjectConversions._
 
 import com.mongodb.casbah.Imports._
 
@@ -60,11 +61,7 @@ class ExtropyProxyActor(    extropy:BaseExtropyContext,
     }
 
     def handleExtropyCommand(op:OpQuery):OpReply = {
-        val query = op.query
-        val command = if(query.keySet.isEmpty)
-            "status"
-        else
-            query.keySet.iterator.next
+        val command = op.query.keys.headOption.getOrElse("status")
         command match {
             case "status" => OpReply(0, 0, 0, 1, Stream(MongoDBObject("ok" -> 1)))
             case "configVersion" => OpReply(0, 0, 0, 1,

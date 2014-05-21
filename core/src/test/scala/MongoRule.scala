@@ -5,11 +5,18 @@ import org.scalatest._
 import com.mongodb.casbah.Imports._
 import org.bson.BSONObject
 
+case class MyReaction(foo:String, bar:Int) extends SalatReaction {
+    def process(data:Traversable[BSONObject]) = Some("blah")
+    def reactionFields = Set()
+    def toLabel = "hey"
+}
+
 class MongoRuleSpec extends FlatSpec with Matchers {
 
     val fixture = BlogFixtures("blog")
     def m[A <: String, B] (elems: (A, B)*) : DBObject = MongoDBObject(elems:_*)
     import fixture._
+
 
     behavior of "Rule mongo serializer"
 
@@ -58,6 +65,15 @@ class MongoRuleSpec extends FlatSpec with Matchers {
         ))
     }
 
+    it should "serialize custom salat reaction" in {
+        val rule = Rule( TopLevelContainer("foo.bar"), TopLevelContainer("foo.bar"), SameDocumentTie(),
+                        Map("baz" -> MyReaction("qux", 42) ) )
+        rule.toMongo should be ( MongoDBObject(
+            "rule" -> MongoDBObject("from" -> "foo.bar", "same" -> "foo.bar"),
+            "baz" -> MongoDBObject("_typeHint" -> "org.zoy.kali.extropy.MyReaction", "foo"->"qux", "bar"->42)
+        ))
+    }
+
     behavior of "Rule mongo de-serializer"
 
     it should "de serialize searchableTitleRule" in {
@@ -82,5 +98,11 @@ class MongoRuleSpec extends FlatSpec with Matchers {
 
     it should "de serialize commentCountInPostRule" in {
         Rule.fromMongo(commentCountInPostRule.toMongo) should be(commentCountInPostRule)
+    }
+
+    it should "de serialize custom salat reaction" in {
+        val rule = Rule( TopLevelContainer("foo.bar"), TopLevelContainer("foo.bar"), SameDocumentTie(),
+                        Map("baz" -> MyReaction("qux", 42) ) )
+        Rule.fromMongo(rule.toMongo) should be ( rule )
     }
 }

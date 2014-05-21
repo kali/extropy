@@ -162,9 +162,7 @@ object Rule {
                         o.get("mvel").asInstanceOf[String],
                         o.getAs[List[String]]("using").getOrElse(List())
                     )
-                    case "class" =>
-                        val classLoader = getClass.getClassLoader
-                        classLoader.loadClass(o.getAs[String]("class").get).newInstance.asInstanceOf[Reaction]
+                    case "_typeHint" => SalatReaction.fromMongo(o)
                     case "count" => CountReaction()
                 }
                 case _ => throw new Error(s"can't parse expression: " + value)
@@ -383,6 +381,17 @@ case class MVELReaction(expr:String, using:List[String]) extends Reaction {
     }
     def toLabel = s"normalize <i>$expr</i>"
     def toMongo = MongoDBObject("mvel" -> expr, "using" -> using)
+}
+
+@Salat
+abstract class SalatReaction extends Reaction {
+    import com.novus.salat.global._
+    def toMongo = grater[SalatReaction].asDBObject(this)
+}
+
+object SalatReaction {
+    import com.novus.salat.global._
+    def fromMongo(dbo:DBObject) = grater[SalatReaction].asObject(dbo)
 }
 
 object StringNormalizationRule {

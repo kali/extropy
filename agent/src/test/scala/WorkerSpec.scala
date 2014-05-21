@@ -22,10 +22,9 @@ import org.json4s.native.JsonMethods._
 
 object RemoteControlLatch {
     val latch = new java.util.concurrent.atomic.AtomicInteger(0)
-    def getLatch = latch
 }
 
-case class RemoteControlledStringNormalizationReaction() extends Reaction {
+case class RemoteControlledStringNormalizationReaction() extends SalatReaction {
     val reactionFields:Set[String] = Set()
     def process(data:Traversable[BSONObject]) = {
         if(RemoteControlLatch.latch.get() == 0) {
@@ -36,7 +35,6 @@ case class RemoteControlledStringNormalizationReaction() extends Reaction {
         Some("bar")
     }
     def toLabel = s"remote controlled"
-    def toJson = ("remote" -> "control")
 }
 
 object RemoteControledSyncRule {
