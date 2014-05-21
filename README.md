@@ -5,7 +5,7 @@ Language- and Framework-agnostic declarative denormalization for MongoDB.
 ## What's the point
 
 In order to get the most of a MongoDB database, developpers have to jump through the painful hoops of denormalization.
-Extropy aims at getting this complexity away.
+extropy aims at getting this complexity away.
 
 extropy main component is a MongoDB proxy. All interactions (at least the ones performing write ops) from the
 applications must go through the proxy. In a sharded setup, a extropy proxy must front each instance of mongos. In a
@@ -13,6 +13,8 @@ standalone setup, a single proxy will front the mongod.
 
 Once this setup is performed, extropy will handle all ancilliary writes for each write op. It also supports adding
 rules on pre-existing data.
+
+extropy is coded in scala.
 
 ## Example
 
@@ -79,31 +81,42 @@ a plain copy, while objects denotes more complex operations.
 
 [TODO]
 
-## Current limitations, roadmap
+## Current status, roadmap
 
+extropy is neither feature complete nor production ready. It's a proof-of-concept.
+
+While I've done my best to get a good unit and integration test converage, and not code too stupid things, expect:
+- gaping holes in the feature set (see below)
+- zero performance profiling or optimisation
+- no existing test coverage for adverse conditions.
+
+Here is a non-exhaustive list of well-defined (at least in my mind) features in the todo list:
 * rules
     * support more tie types: 1-to-1 embedded, 1-to-1 by reference [easy]
-    * support N-to-N ties: (ex: follower / followee) [medium]
+    * support N-to-N ties (developper maintains follower array, extropy maintains followees) [medium]
     * generalize aggregates "reactions": extropy has only "count" at the current point [medium]
     * createdAt, updateAt [easy to medium]
-    * support denormalization depending on denormalized data [hard]
+    * support denormalization depending on other denormalized data [hard]
 * proxy features and consistency level
     * proxy post-writes async: will return faster, but will be only "probably" consistent [medium]
     * warrant eventual consistency for proxied ops [medium]
-    * proxy consistency level switchable request-per-request (take inspiration form mongodb write concern) [harder]
+    * proxy consistency level switchable request-per-request (inspiration form mongodb write concern) [harder]
     * reject write altering directly denormalized fields [medium]
-    * reject write breaking foreign keys [medium]
-    * cascade delete [medium]
+    * reject write breaking foreign keys as an option [medium]
+    * cascade delete as an option [medium]
 * web admin interface
     * pin invariant foreman to specific worker [medium]
-    * cron-like check / check-and-repair jobs [medium]
+    * display state of asynchronous queues in the foremen [...]
+    * cron-like programation of check and check-and-repair jobs [medium]
 
-* data use cases I'd like to fully support
+And these are medium to long term goals, stuff I've already have to do on specific cases in various past projects and
+that I would like to make easier or trivial with extropy:
     * hierarchical data: for instance, from a SOA based on immediate
         parent (and order), maintain children array and searchable lineage [medium to hard]
     * multi-document eventual consistent transaction [medium]
     * "command" pattern: one single insert to a "command" collection triggers various updates [hard]
     * "changelog" pattern: store enough information on update to revert it, allowing to compute past state of database
         [hard]
+    * bucketted fan out at write
     * "unbreakable" credit/withdraw and booking scenario (might be just a special case of command pattern) [hard]
     * floating aggregates (for each user, maintain how many post / comments in the last day / week / ...) [hard]
