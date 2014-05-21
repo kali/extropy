@@ -14,7 +14,7 @@ standalone setup, a single proxy will front the mongod.
 Once this setup is performed, extropy will handle all ancilliary writes for each write op. It also supports adding
 rules on pre-existing data.
 
-extropy is coded in scala.
+extropy is coded in scala, but strictly no scala knowledge is required for using it.
 
 ## Example
 
@@ -35,12 +35,12 @@ A fully-normalized data set could look like that (note that I have omited many f
 
 In order to obtain good read performance for /users/:id and /posts/:id, or case insensitive searchability, 
 or better indexability we may need some denormalization to appear in the data:
-    * post must contain the author name
-    * comment must contain the author name
-    * post must contain comment count
-    * user must contain post count for the user
-    * user must contain comment count for the user
-    * post must contain a case insensitive version of its title
+* post must contain the author name
+* comment must contain the author name
+* post must contain comment count
+* user must contain post count for the user
+* user must contain comment count for the user
+* post must contain a case insensitive version of its title
 
 The resulting data should look like this:
 
@@ -111,12 +111,12 @@ Here is a non-exhaustive list of well-defined (at least in my mind) features in 
 
 And these are medium to long term goals, stuff I've already have to do on specific cases in various past projects and
 that I would like to make easier or trivial with extropy:
-    * hierarchical data: for instance, from a SOA based on immediate
-        parent (and order), maintain children array and searchable lineage [medium to hard]
-    * multi-document eventual consistent transaction [medium]
-    * "command" pattern: one single insert to a "command" collection triggers various updates [hard]
-    * "changelog" pattern: store enough information on update to revert it, allowing to compute past state of database
-        [hard]
-    * bucketted fan out at write
-    * "unbreakable" credit/withdraw and booking scenario (might be just a special case of command pattern) [hard]
-    * floating aggregates (for each user, maintain how many post / comments in the last day / week / ...) [hard]
+* hierarchical data: for instance, from a SOA based on immediate
+    parent (and order), maintain children array and searchable lineage [medium to hard]
+* multi-document eventual consistent transaction [medium]
+* "command" pattern: one single insert to a "command" collection triggers various updates [hard]
+* "changelog" pattern: store enough information on update to revert it, allowing to compute past state of database
+    [hard]
+* bucketted fan out at write
+* "unbreakable" credit/withdraw and booking scenario (might be just a special case of command pattern) [hard]
+* floating aggregates (for each user, maintain how many post / comments in the last day / week / ...) [hard]
