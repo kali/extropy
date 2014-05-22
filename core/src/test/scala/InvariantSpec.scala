@@ -71,6 +71,7 @@ class InvariantSpec extends FlatSpec with Matchers {
         setNameOnUserLiz.impactedFields should be ( Set("name") )
         setAuthorIdOnPost1.impactedFields should be ( Set("authorId") )
         setAuthorIdOnComment1.impactedFields should be ( Set("comments.$.authorId") )
+        pushCommentInPost1.impactedFields should be ( Set("comments") )
     }
 
     it should "monitor inserts" taggedAs(Tag("a")) in {
@@ -180,6 +181,7 @@ class InvariantSpec extends FlatSpec with Matchers {
         authorNameInPostRule.dirtiedSet( setNameOnUserLiz ) should be( Set(SimpleFilterLocation(posts,"authorId", "liz")) )
         authorNameInPostRule.dirtiedSet( setNotNameOnUsers ) should be( 'empty )
         authorNameInPostRule.dirtiedSet( setAuthorIdOnPost1 ) should be( Set(IdLocation(posts,"post1")) )
+        authorNameInPostRule.dirtiedSet( pushCommentInPost1 ) should be( 'empty )
     }
 
     it should "identify dirty set for fbu updates" in {
@@ -209,6 +211,7 @@ class InvariantSpec extends FlatSpec with Matchers {
         postCountInUserRule.dirtiedSet( setAuthorIdOnPost1 ) should be( Set(
             ShakyLocation(QueryLocation(users, IdLocation(posts,"post1"), "authorId"))
         ))
+        postCountInUserRule.dirtiedSet( pushCommentInPost1 ) should be( 'empty )
     }
 
     it should "identify dirty set for fbu updates" in {
@@ -246,6 +249,9 @@ class InvariantSpec extends FlatSpec with Matchers {
         ))
         commentCountInUserRule.dirtiedSet( setAuthorIdOnCommentsNestedSel ) should be( Set(
             ShakyLocation(QueryLocation(users, NestedSelectorLocation(comments, setAuthorIdOnCommentsNestedSel.selector, AnySubDocumentLocationFilter), "authorId")) // TODO:optimize me
+        ))
+        commentCountInUserRule.dirtiedSet( pushCommentInPost1 ) should be ( Set(
+            ShakyLocation(QueryLocation(users, NestedIdLocation(comments, "post1", AnySubDocumentLocationFilter), "authorId")) // TODO:optimize me
         ))
     }
 
@@ -289,6 +295,9 @@ class InvariantSpec extends FlatSpec with Matchers {
         authorNameInCommentRule.dirtiedSet( setAuthorIdOnCommentsNestedSel ) should be( Set(
             NestedSelectorLocation(comments, setAuthorIdOnCommentsNestedSel.selector, AnySubDocumentLocationFilter)
         ))
+        authorNameInCommentRule.dirtiedSet( pushCommentInPost1 ) should be ( Set(
+            NestedIdLocation(comments,"post1",AnySubDocumentLocationFilter)
+        ))
     }
 
     it should "identify dirty set for fbu updates" in {
@@ -328,6 +337,7 @@ class InvariantSpec extends FlatSpec with Matchers {
         commentCountInPostRule.dirtiedSet( setAuthorIdOnPost1 ) should be( 'empty )
         commentCountInPostRule.dirtiedSet( setAuthorIdOnComment1 ) should be( 'empty )
         commentCountInPostRule.dirtiedSet( setAuthorIdOnCommentsNestedSel ) should be( 'empty )
+        commentCountInPostRule.dirtiedSet( pushCommentInPost1 ) should be( Set(IdLocation(posts, "post1")) )
     }
 
     it should "identify dirty set for fbu updates" in {

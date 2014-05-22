@@ -73,6 +73,9 @@ case class BlogFixtures(dbName:String) {
         MongoDBObject("$set" -> MongoDBObject("comments.$.authorId" -> "liz")))
     val setAuthorIdOnCommentsNestedSel = ModifiersUpdateChange(s"$dbName.posts", MongoDBObject("comments.authorId" -> "jack"),
         MongoDBObject("$set" -> MongoDBObject("comments.$.authorId" -> "liz")))
+    val pushCommentInPost1 = ModifiersUpdateChange(s"$dbName.posts", MongoDBObject("_id" -> "post1"),
+        MongoDBObject("$push" ->
+            MongoDBObject("comments" -> MongoDBObject("_id" -> "comment2", "authorId" -> "liz"))))
 
     // some full body updates
     val fbuUserLiz = FullBodyUpdateChange(s"$dbName.users", MongoDBObject("_id" -> "liz"), userLiz)
