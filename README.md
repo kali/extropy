@@ -116,7 +116,8 @@ db.users.save({ "_id" : "liz", "name" : "Elizabeth Lemon" })
 So far so good. The proxy has no rules defined yet, so it does nothing out of the ordinary.
 If you find() the documents, they are just as you are expecting them.
 
-Let's define out rule. We need to call a command on extropy. The syntax may look a bit convoluted, but it mimicks
+Let's load our first rule. We'll pick the "copy author name as authorName in each post" one. 
+We need to call a command on extropy. The syntax may look a bit convoluted, but it mimicks
 the way mongodb does "runCommand" under the hood.
 
 ````
@@ -156,9 +157,10 @@ While I've done my best to get a good unit and integration test converage, and n
 
 Here is a non-exhaustive list of well-defined (at least in my mind) features in the todo list:
 * rules
+    * alternative json syntax for collections with dot in the name [easy]
     * support more tie types: 1-to-1 embedded, 1-to-1 by reference [easy]
     * support N-to-N ties (developper maintains follower array, extropy maintains followees) [medium]
-    * generalize aggregates "reactions": extropy has only "count" at the current point [medium]
+    * more aggregates "reactions": extropy has only "count" at the current stage. MVEL or aggregation framework are good candidates [medium]
     * createdAt, updateAt [easy to medium]
     * support denormalization depending on other denormalized data [hard]
 * proxy features and consistency level
