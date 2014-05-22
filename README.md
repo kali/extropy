@@ -14,7 +14,8 @@ standalone setup, a single proxy will front the mongod.
 Once this setup is performed, extropy will handle all ancilliary writes for each write op. It also supports adding
 rules on pre-existing data.
 
-extropy is coded in scala, but strictly no scala knowledge is required for using it.
+extropy is coded in scala, but strictly no scala knowledge is required for using it, as it builds upon
+MongoDB protocol.
 
 ## Example
 
