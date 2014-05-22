@@ -68,11 +68,11 @@ The purpose of extropy is to get a declarative way to manage these denormalized 
 ```
 
 Each rule definition must start with a "rule" field. Its value describe how documents are "tied", from the document
-containing the denormalization, to the source-of-authority document. Four "links" are actually supported:
-    - follow: for N-to-1 situation,
-    - search: just the opposite,
-    - unwind: like the $unwind in the aggregation framework, dig down in an array of subdocuments,
-    - same: stay in the same document.
+containing the denormalization, to the source-of-authority document. Four "ties" are actually supported:
+* follow: for N-to-1 situation,
+* search: just the opposite,
+* unwind: like the $unwind in the aggregation framework, dig down in an array of subdocuments,
+* same: stay in the same document.
 
 Then comes one or several expressions describing what field are to be denormalized and how. A string value is
 a plain copy, while objects denotes more complex operations.
