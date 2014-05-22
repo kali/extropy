@@ -138,8 +138,6 @@ Now you can try and perform updates:
 ````
 db.posts.update({_id: "post1"}, { "$set" : { authorId: "jack" }})
 db.users.update({_id: "liz"}, { "$set" : { name: "Liz Lemon" }})
-{ "_id" : "post1", "title" : "Title for Post 1", "authorId" : "liz", "authorName" : "Elizabeth Lemon" }
-{ "_id" : "post2", "title" : "Title for Post 2", "authorId" : "liz", "comments" : [ { "_id" : "comment1", "authorId" : "jack" } ], "authorName" : "Elizabeth Lemon" }
 db.posts.find()
 { "_id" : "post1", "title" : "Title for Post 1", "authorId" : "jack", "authorName" : "John Francis \"Jack\" Donaghy" }
 { "_id" : "post2", "title" : "Title for Post 2", "authorId" : "liz", "comments" : [ { "_id" : "comment1", "authorId" : "jack" } ], "authorName" : "Liz Lemon" }
