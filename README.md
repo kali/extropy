@@ -81,7 +81,7 @@ a plain copy, while objects denotes more complex operations.
 ## Run the example
 
 You need java in your $PATH. I use version jdk 8, but 6 and 7 should be ok.
-You'll also need a MongoDB server you can safely play with, and I'll be using the mongo client to demounstrate the
+You'll also need a MongoDB server you can safely play with, and I'll be using the mongo client to demonstrate the
 main features.
 
 Compile and run the proxy:
@@ -162,7 +162,7 @@ Here is a non-exhaustive list of well-defined (at least in my mind) features in 
     * support more tie types: 1-to-1 embedded, 1-to-1 by reference [easy]
     * support N-to-N ties (developper maintains follower array, extropy maintains followees) [medium]
     * more aggregates "reactions": extropy has only "count" at the current stage. MVEL or aggregation framework are good candidates [medium]
-    * createdAt, updateAt [easy to medium]
+    * createdAt, updatedAt [easy to medium]
     * support denormalization depending on other denormalized data [hard]
 * proxy features and consistency level
     * provide a extropy.rc defining short cuts to run command against the proxy [easy]
