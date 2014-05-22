@@ -24,7 +24,7 @@ Posts containts comments as embedded subdocuments.
 
 A fully-normalized data set could look like that (note that I have omited many fields... like the actual text for the posts):
 
-````javascript
+```javascript
 > db.posts.find()
 { "_id" : "post1", "title" : "Title for Post 1", "authorId" : "liz" }
 { "_id" : "post2", "title" : "Title for Post 2", "authorId" : "liz", "comments" : [ { "_id" : "comment1", "authorId" : "jack" } ]  }
@@ -32,7 +32,7 @@ A fully-normalized data set could look like that (note that I have omited many f
 > db.users.find()
 { "_id" : "jack", "name" : "John Francis \"Jack\" Donaghy" }
 { "_id" : "liz", "name" : "Elizabeth Lemon" }
-````
+```
 
 In order to obtain good read performance for /users/:id and /posts/:id, or case insensitive searchability, 
 or better indexability we may need some denormalization to appear in the data:
@@ -57,26 +57,99 @@ The resulting data should look like this:
 { "_id" : "liz", "name" : "Elizabeth Lemon", "postCount" : 2, "commentCount" : 0 }
 ````
 
-The purpose of extropy is to get a declarative way to manage these denormalized fields: let's define some "rules":
+The purpose of extropy is to get a declarative way to manage these denormalized fields: let's define a first "rule", 
+the one maintaining a "authorName" field in the "posts" documents.
 
 ```javascript
-{ "rule" : { "from" : "blog.posts", "follow" : "authorId", "to" : "blog.users" }, "authorName" : "name" }
-{ "rule" : { "from" : "blog.posts.comments", "follow" : "authorId", "to" : "blog.users" }, "authorName" : "name" }
-{ "rule" : { "from" : "blog.posts", "unwind" : "comments" }, "commentCount" : { "count" : true } }
-{ "rule" : { "from" : "blog.users", "search" : "blog.posts", "by" : "authorId" }, "postCount" : { "count" : true } }
-{ "rule" : { "from" : "blog.users", "search" : "blog.posts.comments", "by" : "authorId" }, "commentCount" : { "count" : true } }
-{ "rule" : { "from" : "blog.posts", "same" : "blog.posts" }, "searchableTitle" : { "mvel" : "title.toLowerCase()", "using" : [ "title" ] } }
+{ "rule" : { "from" : "blog.posts", "follow" : "authorId", "to" : "blog.users" },
+    "authorName" : "name" }
 ```
 
 Each rule definition must start with a "rule" field. Its value describe how documents are "tied", from the document
-containing the denormalization, to the source-of-authority document. Four "ties" are actually supported:
+containing the denormalization, to the source-of-authority document.
+In this instance, the tie is materialized by the "authorId" field of the "posts" collection, pointing to a document
+in users (and more specifically its _id).
+
+Then comes one or several expressions describing what fields are to be denormalized and how. A string value is
+a plain copy, while objects denotes more complex operations.
+Here, we will just copy "name" from the found "user" document in a field called authorName.
+
+We want authorName for comments authors too:
+
+```javascript
+{ "rule" : { "from" : "blog.posts.comments", "follow" : "authorId", "to" : "blog.users" },
+    "authorName" : "name" }
+```
+
+The only difference is the "from" container definition: it was a collection, now it's an array of subdocuments.
+
+Next comes the "comment Count in posts" rule:
+
+```javascript
+{ "rule" : { "from" : "blog.posts", "unwind" : "comments" },
+    "commentCount" : { "mvel" : "cursor.count()" } }
+```
+
+Here we are using a different "tie": "unwind" expand an array of subdocuments. The expression is a bit more complicated
+than a field copy, we are interested in the number of elements in the cursor obtained by "unwinding".
+Note that "unwind" will lead to a subdocument cursor whereas "follow" leads to a single document.
+
+Next come the post and comment counters in the users collection:
+
+```javascript
+{ "rule" : { "from" : "blog.users", "search" : "blog.posts", "by" : "authorId" },
+    "postCount" : { "cursor" : "cursor.count()" } }
+{ "rule" : { "from" : "blog.users", "search" : "blog.posts.comments", "by" : "authorId" },
+    "commentCount" : { "mvel" : "cursor.count()" } }
+```
+
+Introducing the "search" tie, which is just a reversed "follow". It leads to a cursor of documents in the first rule,
+a cursor of subdocuments in the second.
+
+TODO: demo MVEL cursor example with actual iteration
+
+```
+{ "rule" : { "from" : "blog.posts", "same" : "blog.posts" },
+    "searchableTitle" : { "mvel" : "title.toLowerCase()", "using" : [ "title" ] } }
+```
+
+Finaly, the "same" tie stays at the same place. As "follow", it leads to a single place.
+In this case, instead of a cursor, extropy binds the various fields from the found document to MVEL context.
+The "using" parameter is necessary for extropy to know which fields from the document it needs to keep track of.
+
+## Containers, Ties and Reactions
+
+### Containers
+
+Containers are "places" where denormalized field can occur:
+* TopLevel: for documents. They are denoted by the database name and the collection name separated by a dot, like
+    "blog.posts"
+* Nested: for sub-documents in an TopLevel array.
+    Just add a dot and the array field name to the collection: "blog.posts.comments".
+
+Notes:
+* These syntaxes break when the collection name contains a dot, which is unfortunately allowed but... I have a plan.
+* Nesting a document directly, object-in-object, with no array is in the roadmap.
+* Nested subdocument MUST contain an _id.
+* Only one level of sub document is supported.
+
+### Ties
+
+Four "ties" are actually supported:
 * follow: for N-to-1 situation,
 * search: just the opposite,
 * unwind: like the $unwind in the aggregation framework, dig down in an array of subdocuments,
 * same: stay in the same document.
 
-Then comes one or several expressions describing what field are to be denormalized and how. A string value is
-a plain copy, while objects denotes more complex operations.
+### Reactions
+
+Two types of reaction are supported:
+* copy a field ("authorName" : "name")
+* MVEL expression. [MVEL](http://mvel.codehaus.org/Language%20Guide%20for%202.0) is a small JVM expression language:
+    if the tie for a rule leads to one single document (like "same", or "follow") then the document fields are bound to
+    variables.
+    For ties leading to 0 to N documents, like "search" or "unwind", a "cursor" variable contains the cursor.
+    Listing used fields in the "using" parameter is necessary for extropy to know what fields update it needs to watch.
 
 ## Run the example
 
@@ -159,9 +232,9 @@ Here is a non-exhaustive list of well-defined (at least in my mind) features in 
     * alternative json syntax for collections with dot in the name [easy]
     * support more tie types: 1-to-1 embedded, 1-to-1 by reference [easy]
     * support N-to-N ties (developper maintains follower array, extropy maintains followees) [medium]
-    * more aggregates "reactions": extropy has only "count" at the current stage. MVEL or aggregation framework are good candidates [medium]
     * createdAt, updatedAt [easy to medium]
     * support denormalization depending on other denormalized data [hard]
+    * support for javascript instead of MVEL (not sure about that) [easy]
 * proxy features and consistency level
     * provide a extropy.rc defining short cuts to run command against the proxy [easy]
     * proxy post-writes async: will return faster, but will be only "probably" consistent [medium]
