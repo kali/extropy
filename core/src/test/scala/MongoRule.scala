@@ -6,7 +6,7 @@ import com.mongodb.casbah.Imports._
 import org.bson.BSONObject
 
 case class MyReaction(foo:String, bar:Int) extends SalatReaction {
-    def process(data:Traversable[BSONObject]) = Some("blah")
+    def process(data:Traversable[BSONObject], multiple:Boolean) = Some("blah")
     def reactionFields = Set()
     def toLabel = "hey"
 }
@@ -40,14 +40,14 @@ class MongoRuleSpec extends FlatSpec with Matchers {
     it should "serialize postCountInUserRule" in {
         postCountInUserRule.toMongo should be ( MongoDBObject(
             "rule" -> MongoDBObject("from" -> "blog.users", "search" -> "blog.posts", "by" -> "authorId"),
-            "postCount" -> MongoDBObject("count" -> true)
+            "postCount" -> MongoDBObject("mvel" -> "cursor.size()")
         ))
     }
 
     it should "serialize commentCountInUserRule" in {
         commentCountInUserRule.toMongo should be ( MongoDBObject(
             "rule" -> MongoDBObject("from" -> "blog.users", "search" -> "blog.posts.comments", "by" -> "authorId"),
-            "commentCount" -> MongoDBObject( "count" -> true )
+            "commentCount" -> MongoDBObject("mvel" -> "cursor.size()")
         ))
     }
 
@@ -61,7 +61,7 @@ class MongoRuleSpec extends FlatSpec with Matchers {
     it should "serialize commentCountInPostRule" in {
         commentCountInPostRule.toMongo should be ( MongoDBObject(
             "rule" -> MongoDBObject("from" -> "blog.posts", "unwind" -> "comments"),
-            "commentCount" -> MongoDBObject("count" -> true)
+            "commentCount" -> MongoDBObject("mvel" -> "cursor.size()")
         ))
     }
 

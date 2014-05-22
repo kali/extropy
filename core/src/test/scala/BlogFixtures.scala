@@ -20,15 +20,17 @@ case class BlogFixtures(dbName:String) {
     val authorNameInPostRule = Rule(    posts, users, FollowKeyTie("authorId"),
                                         Map("authorName" -> CopyFieldsReaction("name")))
 
-    val postCountInUserRule = Rule(     users, posts, ReverseKeyTie("authorId"), Map("postCount" -> CountReaction()))
+    val postCountInUserRule = Rule(     users, posts, ReverseKeyTie("authorId"),
+                                        Map("postCount" -> MVELReaction("cursor.size()")))
 
-
-    val commentCountInUserRule = Rule(  users, comments, ReverseKeyTie("authorId"), Map("commentCount" -> CountReaction()))
+    val commentCountInUserRule = Rule(  users, comments, ReverseKeyTie("authorId"),
+                                        Map("commentCount" -> MVELReaction("cursor.size()")))
 
     val authorNameInCommentRule = Rule( comments, users, FollowKeyTie("authorId"),
                                         Map("authorName" -> CopyFieldsReaction("name")))
 
-    val commentCountInPostRule = Rule(  posts, comments, SubDocumentTie("comments"), Map("commentCount" -> CountReaction()))
+    val commentCountInPostRule = Rule(  posts, comments, SubDocumentTie("comments"),
+                                        Map("commentCount" -> MVELReaction("cursor.size()")))
 
     val allRules = Array( searchableTitleRule, authorNameInPostRule, postCountInUserRule,
         commentCountInUserRule, authorNameInCommentRule, commentCountInPostRule)

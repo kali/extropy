@@ -26,7 +26,7 @@ object RemoteControlLatch {
 
 case class RemoteControlledStringNormalizationReaction() extends SalatReaction {
     val reactionFields:Set[String] = Set()
-    def process(data:Traversable[BSONObject]) = {
+    def process(data:Traversable[BSONObject],multiple:Boolean) = {
         if(RemoteControlLatch.latch.get() == 0) {
             RemoteControlLatch.latch.set(1)
             while(RemoteControlLatch.latch.get() < 2)

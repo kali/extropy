@@ -92,7 +92,7 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
         val propagated = tie.propagate(this, location)
         val resolved = propagated.resolve(payloadMongo)
         val reactant = resolved.flatMap( _.iterator(payloadMongo) ).map( _.data )
-        val effects = reactions.mapValues( _.process(reactant) ).toMap
+        val effects = reactions.mapValues( _.process(reactant, tie.propageToMultiple) ).toMap
         location.setValues(payloadMongo, effects)
     }
 
@@ -101,7 +101,7 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
     def checkOne(payloadMongo:MongoClient, location:ResolvedLocation):Traversable[Mismatch] = {
         val reactant = tie.propagate(this, location).resolve(payloadMongo)
                 .flatMap( _.iterator(payloadMongo) ).map( _.data )
-        val effects = reactions.mapValues( _.process(reactant) )
+        val effects = reactions.mapValues( _.process(reactant, tie.propageToMultiple) )
         location.iterator(payloadMongo).flatMap { targetDbo =>
             val target = new MongoDBObject(targetDbo.data)
             new MongoDBObject(effects).flatMap{ case (k,v) =>
@@ -249,6 +249,7 @@ abstract class Tie {
     def reactionContainerMonitoredFields:Set[String]
     def effectContainerMonitoredFields:Set[String]
 
+    def propageToMultiple:Boolean
     def propagate(rule:Rule, from:ResolvedLocation):ResolvableLocation
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location]
 
@@ -260,6 +261,7 @@ case class SameDocumentTie() extends Tie {
     def reactionContainerMonitoredFields = Set()
     def effectContainerMonitoredFields = Set()
 
+    def propageToMultiple = false
     def propagate(rule:Rule, from:ResolvedLocation):ResolvableLocation = from
     def backPropagate(rule:Rule, location:ResolvedLocation):Traversable[Location] = Some(location)
 
@@ -271,6 +273,7 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
     val effectContainerMonitoredFields = Set(localFieldName)
     val reactionContainerMonitoredFields:Set[String] = Set()
 
+    def propageToMultiple = false
     def propagate(rule:Rule, from:ResolvedLocation) = from match {
         case data:DataLocation => IdLocation(rule.reactionContainer.asInstanceOf[TopLevelContainer],
                                         data.data.getAs[AnyRef](localFieldName).get)
@@ -298,6 +301,7 @@ case class FollowKeyTie(localFieldName:String) extends Tie {
 case class ReverseKeyTie(reactionFieldName:String) extends Tie {
     val effectContainerMonitoredFields:Set[String] = Set("_id")
     val reactionContainerMonitoredFields = Set(reactionFieldName)
+    def propageToMultiple = true
     def propagate(rule:Rule, location:ResolvedLocation) = rule.reactionContainer match {
         case cc:TopLevelContainer => location match {
             case hil:HaveIdLocation => SimpleFilterLocation(cc, reactionFieldName, hil.id)
@@ -326,6 +330,7 @@ case class ReverseKeyTie(reactionFieldName:String) extends Tie {
 case class SubDocumentTie(fieldName:String) extends Tie {
     val effectContainerMonitoredFields:Set[String] = Set()
     val reactionContainerMonitoredFields = Set("_id")
+    def propageToMultiple = true
     def propagate(rule:Rule, location:ResolvedLocation) = location.asInstanceOf[TopLevelLocation] match {
         case d:DataLocation => NestedDocumentLocation(rule.reactionContainer.asInstanceOf[NestedContainer],
                                                     d.data, AnySubDocumentLocationFilter)
@@ -348,40 +353,39 @@ case class SubDocumentTie(fieldName:String) extends Tie {
 // REACTION
 abstract class Reaction {
     def reactionFields:Set[String]
-    def process(data:Traversable[BSONObject]):Option[AnyRef]
+    def process(data:Traversable[BSONObject], multiple:Boolean):Option[AnyRef]
     def toLabel:String
     def toMongo:AnyRef
 }
 
 case class CopyFieldsReaction(from:String) extends Reaction {
     val reactionFields:Set[String] = Set(from)
-    def process(data:Traversable[BSONObject]) = data.headOption.flatMap(_.getAs[AnyRef](from))
+    def process(data:Traversable[BSONObject], multiple:Boolean) = data.headOption.flatMap(_.getAs[AnyRef](from))
     def toLabel = s"copy <i>$from</i>"
     def toMongo = from
 }
 
-case class CountReaction() extends Reaction {
-    val reactionFields:Set[String] = Set()
-    def process(data:Traversable[BSONObject]) = Some(data.size:java.lang.Integer)
-    def toLabel = s"count"
-    def toMongo = MongoDBObject("count" -> true)
-}
-
-case class MVELReaction(expr:String, using:List[String]) extends Reaction {
+case class MVELReaction(expr:String, using:List[String]=List()) extends Reaction {
     import org.mvel2.MVEL
     val reactionFields:Set[String] = using.toSet
     val compiled =  MVEL.compileExpression(expr)
-    def process(data:Traversable[BSONObject]) = data.headOption.map { doc =>
-        try {
-            MVEL.executeExpression(compiled, scala.collection.JavaConversions.mapAsJavaMap(doc))
+    def process(data:Traversable[BSONObject], multiple:Boolean) = try {
+            if(multiple)
+                Some(MVEL.executeExpression(compiled, scala.collection.JavaConversions.mapAsJavaMap(Map("cursor" -> data))))
+            else
+                data.headOption.map { doc =>
+                    MVEL.executeExpression(compiled, scala.collection.JavaConversions.mapAsJavaMap(doc))
+                }
         } catch {
             case a:Throwable =>
                 System.err.println(a)
                 throw a
         }
-    }
     def toLabel = s"normalize <i>$expr</i>"
-    def toMongo = MongoDBObject("mvel" -> expr, "using" -> using)
+    def toMongo = if(using.isEmpty)
+        MongoDBObject("mvel" -> expr)
+    else
+        MongoDBObject("mvel" -> expr, "using" -> using)
 }
 
 @Salat
