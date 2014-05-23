@@ -152,7 +152,7 @@ Two types of reaction are supported:
 
 ## Run the example
 
-You need java in your $PATH. I use version jdk 8, but 6 and 7 should be ok.
+You need java in your $PATH and it has to point to a Java 8 setup. It will *not* work with earlier versions.
 You'll also need a MongoDB server you can safely play with, and I'll be using the mongo client to demonstrate the
 main features.
 
