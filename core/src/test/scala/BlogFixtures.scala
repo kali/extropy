@@ -32,6 +32,10 @@ case class BlogFixtures(dbName:String) {
     val commentCountInPostRule = Rule(  posts, comments, SubDocumentTie("comments"),
                                         Map("commentCount" -> MVELReaction("cursor.size()")))
 
+    val averageRatingInPostRule = Rule( posts, comments, SubDocumentTie("comments"),
+                                        Map("averageRating" ->
+        MVELReaction("""total=0; for(comment:cursor) {total+= comment.get("rating")}; total""")))
+
     val allRules = Array( searchableTitleRule, authorNameInPostRule, postCountInUserRule,
         commentCountInUserRule, authorNameInCommentRule, commentCountInPostRule)
 
@@ -49,10 +53,21 @@ case class BlogFixtures(dbName:String) {
     val userJack = MongoDBObject("_id" -> "jack", "name" -> "John Francis \"Jack\" Donaghy")
     val userCatLady = MongoDBObject("_id" -> "catLady")
 
-    val comment1 = MongoDBObject("_id" -> "comment1", "authorId" -> "jack")
+    val comment1 = MongoDBObject("_id" -> "comment1", "authorId" -> "jack", "rating" -> 4)
+    val comment2 = MongoDBObject("_id" -> "comment2", "authorId" -> "liz", "rating" -> 2)
     val post1 = MongoDBObject("_id" -> "post1", "title" -> "Title for Post 1", "authorId" -> "liz")
     val post2 = MongoDBObject("_id" -> "post2", "title" -> "Title for Post 2", "authorId" -> "liz",
                     "comments" -> MongoDBList(comment1))
+
+    import scala.util.Random
+    val moreComments = {
+        val random = new Random(121314)
+        (3 until 100).map { i =>
+            MongoDBObject("_id" -> s"comment${i}",
+                "authorId" -> (List("liz","jack")(random.nextInt(2))),
+                "rating" -> random.nextInt(5))
+        }
+    }
 
     // some inserts
     val insertUserLiz = InsertChange(s"$dbName.users", userLiz)
@@ -76,8 +91,7 @@ case class BlogFixtures(dbName:String) {
     val setAuthorIdOnCommentsNestedSel = ModifiersUpdateChange(s"$dbName.posts", MongoDBObject("comments.authorId" -> "jack"),
         MongoDBObject("$set" -> MongoDBObject("comments.$.authorId" -> "liz")))
     val pushCommentInPost1 = ModifiersUpdateChange(s"$dbName.posts", MongoDBObject("_id" -> "post1"),
-        MongoDBObject("$push" ->
-            MongoDBObject("comments" -> MongoDBObject("_id" -> "comment2", "authorId" -> "liz"))))
+        MongoDBObject("$push" -> MongoDBObject("comments" -> comment2)))
 
     // some full body updates
     val fbuUserLiz = FullBodyUpdateChange(s"$dbName.users", MongoDBObject("_id" -> "liz"), userLiz)

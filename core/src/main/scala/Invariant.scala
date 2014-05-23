@@ -164,7 +164,6 @@ object Rule {
                         o.getAs[List[String]]("using").getOrElse(List())
                     )
                     case "_typeHint" => SalatReaction.fromMongo(o)
-                    case "count" => CountReaction()
                 }
                 case _ => throw new Error(s"can't parse expression: " + value)
             }))
@@ -367,14 +366,18 @@ case class CopyFieldsReaction(from:String) extends Reaction {
 
 case class MVELReaction(expr:String, using:List[String]=List()) extends Reaction {
     import org.mvel2.MVEL
+    import scala.collection.JavaConversions
     val reactionFields:Set[String] = using.toSet
     val compiled =  MVEL.compileExpression(expr)
-    def process(data:Traversable[BSONObject], multiple:Boolean) = try {
-            if(multiple)
-                Some(MVEL.executeExpression(compiled, scala.collection.JavaConversions.mapAsJavaMap(Map("cursor" -> data))))
-            else
+    def process(data:Traversable[BSONObject], multiple:Boolean) =
+        try {
+            if(multiple) {
+                val m = new java.util.HashMap[String,AnyRef]
+                m.put("cursor", JavaConversions.asJavaIterable(data.map(_.toMap).toIterable))
+                Some(MVEL.executeExpression(compiled, m))
+            } else
                 data.headOption.map { doc =>
-                    MVEL.executeExpression(compiled, scala.collection.JavaConversions.mapAsJavaMap(doc))
+                    MVEL.executeExpression(compiled, JavaConversions.mapAsJavaMap(doc))
                 }
         } catch {
             case a:Throwable =>
