@@ -87,7 +87,7 @@ Next comes the "comment Count in posts" rule:
 
 ```javascript
 { "rule" : { "from" : "blog.posts", "unwind" : "comments" },
-    "commentCount" : { "mvel" : "cursor.count()" } }
+    "commentCount" : { "js" : "function(cursor) cursor.size()" } }
 ```
 
 Here we are using a different "tie": "unwind" expand an array of subdocuments. The expression is a bit more complicated
@@ -98,23 +98,23 @@ Next come the post and comment counters in the users collection:
 
 ```javascript
 { "rule" : { "from" : "blog.users", "search" : "blog.posts", "by" : "authorId" },
-    "postCount" : { "cursor" : "cursor.count()" } }
+    "postCount" : { "js" : "function(cursor) cursor.size()" } }
 { "rule" : { "from" : "blog.users", "search" : "blog.posts.comments", "by" : "authorId" },
-    "commentCount" : { "mvel" : "cursor.count()" } }
+    "commentCount" : { "js" : "function(cursor) cursor.size()" } }
 ```
 
 Introducing the "search" tie, which is just a reversed "follow". It leads to a cursor of documents in the first rule,
 a cursor of subdocuments in the second.
 
-TODO: demo MVEL cursor example with actual iteration
+TODO: demo js cursor example with actual iteration
 
 ```
 { "rule" : { "from" : "blog.posts", "same" : "blog.posts" },
-    "searchableTitle" : { "mvel" : "title.toLowerCase()", "using" : [ "title" ] } }
+    "searchableTitle" : { "js" : "function(doc) doc.title.toLowerCase()", "using" : [ "title" ] } }
 ```
 
 Finaly, the "same" tie stays at the same place. As "follow", it leads to a single place.
-In this case, instead of a cursor, extropy binds the various fields from the found document to MVEL context.
+In this case, instead of a cursor, extropy binds pass the found document to MVEL context.
 The "using" parameter is necessary for extropy to know which fields from the document it needs to keep track of.
 
 ## Containers, Ties and Reactions
@@ -145,10 +145,9 @@ Four "ties" are actually supported:
 
 Two types of reaction are supported:
 * copy a field ("authorName" : "name")
-* MVEL expression. [MVEL](http://mvel.codehaus.org/Language%20Guide%20for%202.0) is a small JVM expression language:
-    if the tie for a rule leads to one single document (like "same", or "follow") then the document fields are bound to
-    variables.
-    For ties leading to 0 to N documents, like "search" or "unwind", a "cursor" variable contains the cursor.
+* JavaScript expression. If the tie for a rule leads to one single document (like "same", or "follow") then the
+    document is passed to a user-defined JS function.
+    For ties leading to 0 to N documents, like "search" or "unwind", a "cursor" is passed instead.
     Listing used fields in the "using" parameter is necessary for extropy to know what fields update it needs to watch.
 
 ## Run the example
@@ -234,7 +233,6 @@ Here is a non-exhaustive list of well-defined (at least in my mind) features in 
     * support N-to-N ties (developper maintains follower array, extropy maintains followees) [medium]
     * createdAt, updatedAt [easy to medium]
     * support denormalization depending on other denormalized data [hard]
-    * support for javascript instead of MVEL (not sure about that) [easy]
 * proxy features and consistency level
     * replica set support
     * provide a extropy.rc defining short cuts to run command against the proxy [easy]
