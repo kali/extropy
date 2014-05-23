@@ -31,63 +31,6 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         comments.asLocation.iterator(mongoBackendClient).size should be(1)
     }
 
-    behavior of "MVEL reactions"
-
-    it should "work again top level stuff" in {
-        truncateAll
-        mongoBackendClient(dbName)("users").insert(userLiz ++ ("rating" -> 12), userJack ++ ("rating" -> 42))
-        import org.mvel2.MVEL
-        import scala.collection.JavaConversions
-        val compiled = MVEL.compileExpression("""
-            total = 0;
-            for(it: items) { total += it.get("rating") };
-            total
-        """)
-        val context = new java.util.HashMap[String,AnyRef]
-        context.put("items", JavaConversions.asJavaIterable( mongoBackendClient(dbName)("users").find(MongoDBObject.empty).map(_.toMap).toIterable ))
-        MVEL.executeExpression(compiled, context) should be(54)
-    }
-
-    it should "work against inner stuff for one doc from memory" taggedAs(Tag("w")) in {
-        import org.mvel2.MVEL
-        import scala.collection.JavaConversions
-/*
-        truncateAll
-*/
-        val post2WithMoreComments = post2 ++ ("comments" -> (comment1 :: comment2 :: moreComments.toList))
-//        mongoBackendClient(dbName)("posts").insert(post2WithMoreComments)
-        val compiled = MVEL.compileExpression("""
-            total = 0;
-            for(it: items) { total += it.get("rating") };
-            total
-        """)
-        val context = new java.util.HashMap[String,AnyRef]
-        context.put("items", JavaConversions.asJavaIterable(
-            post2WithMoreComments.as[MongoDBList]("comments").map( _.asInstanceOf[DBObject].toMap).toIterable
-        ))
-        MVEL.executeExpression(compiled, context) should be(54)
-    }
-
-    it should "work against inner stuff for a flatMap cursor/array" taggedAs(Tag("w")) in {
-        import org.mvel2.MVEL
-        import scala.collection.JavaConversions
-        truncateAll
-        val post2WithMoreComments = post2 ++ ("comments" -> (comment1 :: comment2 :: moreComments.toList))
-        mongoBackendClient(dbName)("posts").insert(post2WithMoreComments)
-        val compiled = MVEL.compileExpression("""
-            total = 0;
-            for(it: items) { total += it.get("rating") };
-            total
-        """)
-        val context = new java.util.HashMap[String,AnyRef]
-        context.put("items", JavaConversions.asJavaIterable(
-            mongoBackendClient(dbName)("posts").find(MongoDBObject.empty).toIterable
-                .flatMap( _.as[MongoDBList]("comments") )
-                .map(_.asInstanceOf[DBObject].toMap).toIterable
-        ))
-        MVEL.executeExpression(compiled, context) should be(54)
-    }
-
     behavior of "location interaction with mongo"
 
     it should "expand correctly" in {
@@ -164,7 +107,8 @@ class InvariantMongoSpec extends FlatSpec with Matchers with MongodbTemporary {
         val post2WithMoreComments = post2 ++ ("comments" -> (comment1 :: comment2 :: moreComments.toList))
         mongoBackendClient(dbName)("posts").insert(post2WithMoreComments)
         averageRatingInPostRule.fixOne(mongoBackendClient, IdLocation(posts, "post2"))
-        println(mongoBackendClient(dbName)("posts").findOne(MongoDBObject("_id" -> "post2")).get)
+        val rating:Double = mongoBackendClient(dbName)("posts").findOne(MongoDBObject("_id" -> "post2")).get.getAs[Double]("averageRating").get
+        rating should be >(0.0D)
     }
 
     behavior of "fix all..."

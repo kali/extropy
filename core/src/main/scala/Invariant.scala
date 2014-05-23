@@ -159,8 +159,8 @@ object Rule {
         val reactions:Map[String,Reaction] = (j-"rule").map { case(name, value) => (name -> (value match {
                 case from:String => CopyFieldsReaction(from)
                 case o:BSONObject => o.keys.head match {
-                    case "mvel" => MVELReaction(
-                        o.get("mvel").asInstanceOf[String],
+                    case "js" => JSReaction(
+                        o.get("js").asInstanceOf[String],
                         o.getAs[List[String]]("using").getOrElse(List())
                     )
                     case "_typeHint" => SalatReaction.fromMongo(o)
@@ -364,31 +364,39 @@ case class CopyFieldsReaction(from:String) extends Reaction {
     def toMongo = from
 }
 
-case class MVELReaction(expr:String, using:List[String]=List()) extends Reaction {
-    import org.mvel2.MVEL
-    import scala.collection.JavaConversions
+object JSReaction {
+    import javax.script._
+    val engine = new ScriptEngineManager().getEngineByName("nashorn")
+}
+
+case class JSReaction(expr:String, using:List[String]=List()) extends Reaction {
     val reactionFields:Set[String] = using.toSet
-    val compiled =  MVEL.compileExpression(expr)
+    import java.util.function.Function
+    val function:Function[AnyRef,AnyRef] = {
+        import javax.script._
+        val jsexpr = "new java.util.function.Function(" + expr +")"
+        JSReaction.engine.eval(jsexpr).asInstanceOf[Function[AnyRef,AnyRef]]
+    }
+
     def process(data:Traversable[BSONObject], multiple:Boolean) =
         try {
+            import scala.collection.JavaConversions
             if(multiple) {
-                val m = new java.util.HashMap[String,AnyRef]
-                m.put("cursor", JavaConversions.asJavaIterable(data.map(_.toMap).toIterable))
-                Some(MVEL.executeExpression(compiled, m))
+                Some(function.apply(JavaConversions.asJavaIterable(data.map(_.toMap).toIterable)))
             } else
                 data.headOption.map { doc =>
-                    MVEL.executeExpression(compiled, JavaConversions.mapAsJavaMap(doc))
+                    function.apply(JavaConversions.mapAsJavaMap(doc))
                 }
         } catch {
             case a:Throwable =>
                 System.err.println(a)
                 throw a
         }
-    def toLabel = s"normalize <i>$expr</i>"
+    def toLabel = s"javascript <i>$expr</i>"
     def toMongo = if(using.isEmpty)
-        MongoDBObject("mvel" -> expr)
+        MongoDBObject("js" -> expr)
     else
-        MongoDBObject("mvel" -> expr, "using" -> using)
+        MongoDBObject("js" -> expr, "using" -> using)
 }
 
 @Salat
@@ -405,7 +413,7 @@ object SalatReaction {
 object StringNormalizationRule {
     def apply(collection:String, from:String, to:String) =
         Rule(TopLevelContainer(collection), TopLevelContainer(collection), SameDocumentTie(),
-                Map(to -> MVELReaction(s"$from.toLowerCase()", List(from))))
+                Map(to -> JSReaction(s"function f(doc) { return doc.$from.toLowerCase(); }", List(from))))
 }
 
 class InvariantDAO(val db:MongoDB, val lockDuration:FiniteDuration)(implicit ctx: com.novus.salat.Context) {

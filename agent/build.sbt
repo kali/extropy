@@ -2,10 +2,6 @@ name := "extropy-proxy"
 
 ExtropyBuildSettings.buildSettings
 
-fork in test := true
-
-parallelExecution in Test := false
-
 val akkaVersion = "2.3.2"
 
 libraryDependencies ++= Seq(

@@ -16,35 +16,6 @@ class InvariantSpec extends FlatSpec with Matchers {
     val fixture = BlogFixtures(s"extropy-spec-${System.currentTimeMillis}")
     import fixture._
 
-    behavior of "MVEL expression"
-
-    it should "work against top level pojo/poso" in {
-        import org.mvel2.MVEL
-        import scala.collection.JavaConversions
-        val compiled = MVEL.compileExpression("""
-            total = 0;
-            for(it: items) { total += it.get("value") };
-            total
-        """)
-        val context = new java.util.HashMap[String,AnyRef]
-        context.put("items", JavaConversions.asJavaIterable(List(MongoDBObject("value" -> 12).toMap, MongoDBObject("value" -> 42).toMap)))
-        MVEL.executeExpression(compiled, context) should be(54)
-    }
-
-    it should "work against mongodb mocks" /* taggedAs(Tag("w")) */ in {
-        import org.mvel2.MVEL
-        import scala.collection.JavaConversions
-        val compiled = MVEL.compileExpression("""
-            total = 0;
-            for(it: items) { total += it.get("value") };
-            total
-        """)
-        val obj = MongoDBObject("values" -> MongoDBList(MongoDBObject("value" -> 12), MongoDBObject("value" -> 42)))
-        val context = new java.util.HashMap[String,AnyRef]
-        context.put("items", JavaConversions.asJavaIterable(obj.as[MongoDBList]("values").toIterable))
-        MVEL.executeExpression(compiled, context) should be(54)
-    }
-
     behavior of "Ties"
 
     it should "resolve document locations" in {

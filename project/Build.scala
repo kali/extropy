@@ -12,9 +12,12 @@ object ExtropyBuildSettings {
 //        resolvers += Resolver.sonatypeRepo("snapshots"),
 //        unmanagedSourceDirectories in Test += file("core/src/fixture/scala"),
         scalacOptions ++= Seq("-Xfatal-warnings",  "-deprecation", "-feature"),
+        fullClasspath in Test += Attributed.blank(file(s"${util.Properties.javaHome}/lib/ext/nashorn.jar")),
+        parallelExecution in Test := false,
+        fork in Test := true,
         libraryDependencies ++= Seq(
             "ch.qos.logback" % "logback-classic" % "1.0.13",
-            "org.mvel" % "mvel2" % "2.1.9.Final",
+//            "org.mvel" % "mvel2" % "2.1.9.Final",
             "com.novus" %% "salat-core" % "1.9.8",
             "com.typesafe.scala-logging" %% "scala-logging-slf4j" % "2.1.2",
             "org.scalatest" %% "scalatest" % "2.1.3" % "test",

@@ -24,7 +24,7 @@ class MongoRuleSpec extends FlatSpec with Matchers {
         searchableTitleRule.toMongo should be( MongoDBObject(
             "rule" -> MongoDBObject("from" -> "blog.posts", "same" -> "blog.posts"),
             "searchableTitle" -> MongoDBObject(
-                "mvel" -> "title.toLowerCase()",
+                "js" -> "function(doc) doc.title.toLowerCase()",
                 "using" -> List("title")
             )
         ))
@@ -40,14 +40,14 @@ class MongoRuleSpec extends FlatSpec with Matchers {
     it should "serialize postCountInUserRule" in {
         postCountInUserRule.toMongo should be ( MongoDBObject(
             "rule" -> MongoDBObject("from" -> "blog.users", "search" -> "blog.posts", "by" -> "authorId"),
-            "postCount" -> MongoDBObject("mvel" -> "cursor.size()")
+            "postCount" -> MongoDBObject("js" -> "function(cursor) cursor.size()")
         ))
     }
 
     it should "serialize commentCountInUserRule" in {
         commentCountInUserRule.toMongo should be ( MongoDBObject(
             "rule" -> MongoDBObject("from" -> "blog.users", "search" -> "blog.posts.comments", "by" -> "authorId"),
-            "commentCount" -> MongoDBObject("mvel" -> "cursor.size()")
+            "commentCount" -> MongoDBObject("js" -> "function(cursor) cursor.size()")
         ))
     }
 
@@ -61,7 +61,7 @@ class MongoRuleSpec extends FlatSpec with Matchers {
     it should "serialize commentCountInPostRule" in {
         commentCountInPostRule.toMongo should be ( MongoDBObject(
             "rule" -> MongoDBObject("from" -> "blog.posts", "unwind" -> "comments"),
-            "commentCount" -> MongoDBObject("mvel" -> "cursor.size()")
+            "commentCount" -> MongoDBObject("js" -> "function(cursor) cursor.size()")
         ))
     }
 

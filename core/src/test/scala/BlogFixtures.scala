@@ -15,26 +15,31 @@ case class BlogFixtures(dbName:String) {
 
     // some rules
     val searchableTitleRule = Rule(     posts, posts, SameDocumentTie(),
-                                        Map("searchableTitle" -> MVELReaction(s"title.toLowerCase()", List("title"))))
+                                        Map("searchableTitle" -> JSReaction(
+                                            "function(doc) doc.title.toLowerCase()", List("title"))))
 
     val authorNameInPostRule = Rule(    posts, users, FollowKeyTie("authorId"),
                                         Map("authorName" -> CopyFieldsReaction("name")))
 
     val postCountInUserRule = Rule(     users, posts, ReverseKeyTie("authorId"),
-                                        Map("postCount" -> MVELReaction("cursor.size()")))
+                                        Map("postCount" -> JSReaction("function(cursor) cursor.size()", List())))
 
     val commentCountInUserRule = Rule(  users, comments, ReverseKeyTie("authorId"),
-                                        Map("commentCount" -> MVELReaction("cursor.size()")))
+                                        Map("commentCount" -> JSReaction("function(cursor) cursor.size()", List())))
 
     val authorNameInCommentRule = Rule( comments, users, FollowKeyTie("authorId"),
                                         Map("authorName" -> CopyFieldsReaction("name")))
 
     val commentCountInPostRule = Rule(  posts, comments, SubDocumentTie("comments"),
-                                        Map("commentCount" -> MVELReaction("cursor.size()")))
+                                        Map("commentCount" -> JSReaction("function(cursor) cursor.size()", List())))
 
     val averageRatingInPostRule = Rule( posts, comments, SubDocumentTie("comments"),
                                         Map("averageRating" ->
-        MVELReaction("""total=0; for(comment:cursor) {total+= comment.get("rating")}; total""")))
+        JSReaction("""function(cursor) {
+                        var total=0;
+                        for each (comment in cursor) total += comment.rating;
+                        return total / cursor.size();
+                    }""")))
 
     val allRules = Array( searchableTitleRule, authorNameInPostRule, postCountInUserRule,
         commentCountInUserRule, authorNameInCommentRule, commentCountInPostRule)
