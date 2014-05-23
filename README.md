@@ -9,7 +9,7 @@ extropy aims at getting this complexity away.
 
 extropy main component is a MongoDB proxy. All interactions (at least the ones performing write ops) from the
 applications must go through the proxy. In a sharded setup, a extropy proxy must front each instance of mongos. In a
-standalone setup, a single proxy will front the mongod. 
+standalone setup, a single proxy will front the mongod. Replica-set are more tricky, the support is in the roadmap.
 
 Once this setup is performed, extropy will handle all ancilliary writes for each write op. It also supports adding
 rules on pre-existing data.
@@ -236,6 +236,7 @@ Here is a non-exhaustive list of well-defined (at least in my mind) features in 
     * support denormalization depending on other denormalized data [hard]
     * support for javascript instead of MVEL (not sure about that) [easy]
 * proxy features and consistency level
+    * replica set support
     * provide a extropy.rc defining short cuts to run command against the proxy [easy]
     * proxy post-writes async: will return faster, but will be only "probably" consistent [medium]
     * warrant eventual consistency for proxied ops [medium]
