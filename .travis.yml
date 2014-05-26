@@ -5,7 +5,7 @@ jdk:
   - oraclejdk8
 services:
   - mongodb
-env: MONGO_FOR_TEST=localhost:27017
 cache:
   directories:
     - $HOME/.embedmongo
+env: MONGO_FOR_TEST=localhost:27017
