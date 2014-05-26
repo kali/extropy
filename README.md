@@ -2,6 +2,8 @@
 
 Language- and Framework-agnostic declarative denormalization for MongoDB.
 
+[![Build Status](https://travis-ci.org/kali/extropy.svg?branch=master)](https://travis-ci.org/kali/extropy)
+
 ## What's the point
 
 In order to get the most of a MongoDB database, developpers have to jump through the painful hoops of denormalization.

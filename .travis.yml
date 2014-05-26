@@ -6,8 +6,3 @@ jdk:
 services:
   - mongodb
 env: MONGO_FOR_TEST=localhost:27017
-cache:
-  directories:
-    - $HOME/.m2
-    - $HOME/.ivy2
-script: sbt core/test agent/test
