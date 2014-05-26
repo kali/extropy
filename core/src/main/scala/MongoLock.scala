@@ -77,7 +77,7 @@ case class MongoLockingPool(
     def lockUpdate(timeout:FiniteDuration)(implicit by:LockerIdentity):BSONObject =
         MongoDBObject("$set" -> MongoDBObject(
             s"$subfield.lb" -> by.id,
-            s"$subfield.lu" -> new Date(timeout.fromNow.time.toMillis)
+            s"$subfield.lu" -> new Date(System.currentTimeMillis + timeout.toMillis)
         ))
 
     def lockOne(selectorCriteria:BSONObject=null,sortCriteria:BSONObject=null,
@@ -100,7 +100,7 @@ case class MongoLockingPool(
 
     def insertLocked(doc:BSONObject, timeout:FiniteDuration=defaultTimeout)(implicit by:LockerIdentity) {
         collection.insert(recursiveMerge(doc, MongoDBObject(subfield ->
-            MongoDBObject("lb" -> by.id, "lu" -> new Date(timeout.fromNow.time.toMillis))
+            MongoDBObject("lb" -> by.id, "lu" -> new Date(System.currentTimeMillis + timeout.toMillis))
         )))
         logger.trace(s"insertLocked $collection: $by creates and locks $doc")
     }
