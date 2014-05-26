@@ -195,7 +195,7 @@ of options.
 payload must target the mongodb where the actual data lives.
 extropy will generate a database in it (called... "extropy") to store rules definitions and handle communication
 between the various proxy and workers of your system.
-You can use --extropy to specify an alternate location (it can be an entirely separate server)
+You can use --extropy to specify an alternate location (it can actually be an entirely separate server).
 
 From this point, you should always connect to mongodb through the proxy. Let's start by populating our blog database:
 
@@ -238,14 +238,22 @@ db.posts.find()
 
 Both changes (authorId on post1 and author full name for liz) have been entirely propagated.
 
-## Current status, roadmap
+## Using it
 
 extropy is neither feature complete nor production ready. It's a proof-of-concept.
 
 While I've done my best to get a good unit and integration test converage, and not code too stupid things, expect:
-- gaping holes in the feature set (see below)
+- gaping holes in the feature set (see the roadmap below)
 - zero performance profiling or optimisation
 - no existing test coverage for adverse conditions.
+
+If you want to try anyway, proceed with caution: if you make a mistake in the expression of one rule or another,
+you might very well overwrite data that was not meant to be overwritten.
+
+Also of significant importance, replica-set setups need some work on the proxy side to work. In the meantime,
+standalone and sharded setup (with proxies between your app and the mongoS) will work.
+
+## Roadmap
 
 Here is a non-exhaustive list of well-defined (at least in my mind) features in the todo list:
 * rules
