@@ -8,9 +8,7 @@ In order to get the most of a MongoDB database, developpers have to jump through
 extropy aims at getting this complexity away.
 
 extropy main component is a MongoDB proxy. All interactions (at least the ones performing write ops) from the
-applications must go through the proxy. In a sharded setup, a extropy proxy must front each instance of mongos. In a
-standalone setup, a single proxy will front the mongod. Replica-set are more tricky, the support is in the roadmap.
-
+applications must go through the proxy.
 Once this setup is performed, extropy will handle all ancilliary writes for each write op. It also supports adding
 rules on pre-existing data.
 
@@ -93,6 +91,15 @@ Next comes the "comment Count in posts" rule:
 Here we are using a different "tie": "unwind" expand an array of subdocuments. The expression is a bit more complicated
 than a field copy, we are interested in the number of elements in the cursor obtained by "unwinding".
 Note that "unwind" will lead to a subdocument cursor whereas "follow" leads to a single document.
+
+I'm using the nice "lambda-style" syntax extension that nashorn, the new Java 8 JS engine, borrows from mozilla 1.8
+javascript version. Nothing tricky:
+
+```javascript
+function sqr(x) x*x
+// is equivalent to
+// function sqr(x) { return x*x }
+```
 
 Next come the post and comment counters in the users collection:
 
@@ -248,7 +255,7 @@ Here is a non-exhaustive list of well-defined (at least in my mind) features in 
     * createdAt, updatedAt [easy to medium]
     * support denormalization depending on other denormalized data [hard]
 * proxy features and consistency level
-    * replica set support
+    * replica set support (mongoS-based cluster is ok, standalone too, but replica set needs some hacking) [medium]
     * provide a extropy.rc defining short cuts to run command against the proxy [easy]
     * proxy post-writes async: will return faster, but will be only "probably" consistent [medium]
     * warrant eventual consistency for proxied ops [medium]
