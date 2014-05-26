@@ -3,3 +3,6 @@ scala:
   - 2.11.0
 jdk:
   - oraclejdk8
+services:
+  - mongodb
+env: MONGO_FOR_TEST=localhost:27017
