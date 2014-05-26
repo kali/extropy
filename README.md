@@ -106,16 +106,30 @@ Next come the post and comment counters in the users collection:
 Introducing the "search" tie, which is just a reversed "follow". It leads to a cursor of documents in the first rule,
 a cursor of subdocuments in the second.
 
-TODO: demo js cursor example with actual iteration
 
-```
+```javascript
 { "rule" : { "from" : "blog.posts", "same" : "blog.posts" },
     "searchableTitle" : { "js" : "function(doc) doc.title.toLowerCase()", "using" : [ "title" ] } }
 ```
 
 Finaly, the "same" tie stays at the same place. As "follow", it leads to a single place.
-In this case, instead of a cursor, extropy binds pass the found document to MVEL context.
+In this case, instead of a cursor, extropy pass the found document to the JavaScript function.
 The "using" parameter is necessary for extropy to know which fields from the document it needs to keep track of.
+
+JavaScript reactions allow to make arbitrary complex computation at denormalization time. Let's imagine a scenario
+where the comments come with a rating, and we need to maintain the average rating in the post document. (I have
+re-formatted the document with non-json compatible carriage return, but you get the idea).
+
+```javascript
+{ "rule" : { "from" : "blog.posts", "same" : "blog.posts" },
+    "averageRating" : { "js" : "function(cursor) {
+                            var total=0;
+                            for each (comment in cursor)
+                                total += comment.rating;
+                            return total / cursor.size();
+                        }",
+                    "using" : [ "title" ] } }
+```
 
 ## Containers, Ties and Reactions
 
