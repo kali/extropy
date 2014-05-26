@@ -287,3 +287,13 @@ that I would like to make easier or trivial with extropy:
 * bucketted fan out at write
 * "unbreakable" credit/withdraw and booking scenario (might be just a special case of command pattern) [hard]
 * floating aggregates (for each user, maintain how many post / comments in the last day / week / ...) [hard]
+
+## Credits, acknowledgment and License
+
+extropy is (c)2014 [Mathieu Poumeyrol](http://github.com/kali).
+
+It is rooted on experience acquired working dureing 5-year with MongoDB for fotopedia applications backends, and
+is an attempt to address most of the frustration and anxiety raised among newcomers by denormalization maintenance.
+Most of the work was done on working time, and valuable input also came from fotopedia colleagues and friends.
+
+extropy is released under the [WTFPL](http://www.wtfpl.net/) license.
