@@ -160,7 +160,7 @@ Notes:
 
 Four "ties" are actually supported:
 * follow: a classical N-to-1 situation: Post.authorId ties N posts documents to 1 single User (by its _id).
-          When resolving this tie from one Post, we land on on User (which may or may not have other Posts)
+          When resolving this tie from one Post, we land on User (which may or may not have other Posts)
 * search: the same physical relation than follow, but used in the other direction: 1 single User is tied to N posts
           by Post.authorId. When resolving this tie from the User, we obtain a cursor of Posts.
 * unwind: like the $unwind in the aggregation framework, dig down in an array of subdocuments. It also resolves to
@@ -190,7 +190,7 @@ cd extropy
 ./sbt "agent/run --help"
 ````
 
-If you're not a regular sbt or maven user, it may take a while, but you should evantually, you should get a list
+If you're not a regular sbt or maven user, it may take a while, but you should eventually see a list
 of options.
 
 ```
