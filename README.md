@@ -11,7 +11,7 @@ extropy aims at getting this complexity away.
 
 extropy main component is a MongoDB proxy. All interactions (at least the ones performing write ops) from the
 applications must go through the proxy.
-Once this setup is performed, extropy will handle all ancilliary writes for each write op. It also supports adding
+Once this setup is performed, extropy will handle all ancillary writes for each write op. It also supports adding
 rules on pre-existing data.
 
 extropy is coded in scala, but strictly no scala knowledge is required for using it, as it builds upon
