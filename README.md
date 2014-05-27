@@ -184,11 +184,11 @@ main features.
 
 Compile and run the proxy:
 
-````shell
+```shell
 git clone https://github.com/kali/extropy.git
 cd extropy
 ./sbt "agent/run --help"
-````
+```
 
 If you're not a regular sbt or maven user, it may take a while, but you should eventually see a list
 of options.
@@ -204,42 +204,44 @@ You can use --extropy to specify an alternate location (it can actually be an en
 
 From this point, you should always connect to mongodb through the proxy. Let's start by populating our blog database:
 
-````
+```javascript
 % mongo localhost:27000/blog
 db.posts.save({ "_id" : "post1", "title" : "Title for Post 1", "authorId" : "liz" })
 db.posts.save({ "_id" : "post2", "title" : "Title for Post 2", "authorId" : "liz", "comments" : [ { "_id" : "comment1", "authorId" : "jack" } ]  })
 db.users.save({ "_id" : "jack", "name" : "John Francis \"Jack\" Donaghy" })
 db.users.save({ "_id" : "liz", "name" : "Elizabeth Lemon" })
-````
+```
 
 So far so good. The proxy has no rules defined yet, so it does nothing out of the ordinary.
 If you find() the documents, they are just as you are expecting them.
 
 Let's load our first rule. We'll pick the "copy author name as authorName in each post" one. 
 We need to call a command on extropy. The syntax may look a bit convoluted, but it mimicks
-the way mongodb does "runCommand" under the hood.
+the way MongoDB does "runCommand" under the hood: standard commands are actually find queries
+performed against a "magic" collections called "$cmd". I use "$extropy" instead, but the
+principle is the same.
 
-````
+```javascript
 db.$extropy.findOne({ "addRule": { "rule" : { "from" : "blog.posts", "follow" : "authorId", "to" : "blog.users" }, "authorName" : "name" }} )
-````
+```
 
 The proxy output may spew a few lines to state that it actually performed a Sync on a new rule, and you can verify
 the result:
 
-````
+```javascript
 db.posts.find()
 { "_id" : "post1", "title" : "Title for Post 1", "authorId" : "liz", "authorName" : "Elizabeth Lemon" }
 { "_id" : "post2", "title" : "Title for Post 2", "authorId" : "liz", "comments" : [ { "_id" : "comment1", "authorId" : "jack" } ], "authorName" : "Elizabeth Lemon" }
-````
+```
 
 Now you can try and perform updates: 
-````
+```javascript
 db.posts.update({_id: "post1"}, { "$set" : { authorId: "jack" }})
 db.users.update({_id: "liz"}, { "$set" : { name: "Liz Lemon" }})
 db.posts.find()
 { "_id" : "post1", "title" : "Title for Post 1", "authorId" : "jack", "authorName" : "John Francis \"Jack\" Donaghy" }
 { "_id" : "post2", "title" : "Title for Post 2", "authorId" : "liz", "comments" : [ { "_id" : "comment1", "authorId" : "jack" } ], "authorName" : "Liz Lemon" }
-````
+```
 
 Both changes (authorId on post1 and author full name for liz) have been entirely propagated.
 
