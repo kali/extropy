@@ -130,7 +130,7 @@ where the comments come with a rating, and we need to maintain the average ratin
 re-formatted the document with non-json compatible carriage return, but you get the idea).
 
 ```javascript
-{ "rule" : { "from" : "blog.posts", "same" : "blog.posts" },
+{ "rule" : { "from" : "blog.posts", "unwind" : "comments" },
     "averageRating" : { "js" : "function(cursor) {
                             var total=0;
                             for each (comment in cursor)
