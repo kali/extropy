@@ -90,12 +90,12 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
     }
 
     it should "switch its invariant from Created to Sync" in withExtropyAndBlog { (extropy,blog) =>
+        extropy.agentDAO.readConfigurationVersion should be(0)
         val invariant = Invariant(RemoteControledSyncRule("foo.baz"))
         extropy.invariantDAO.salat.save(invariant)
         implicit val _locker = LockerIdentity(blog.dbName)
         val locked1 = extropy.prospect.get
         val foreman = system.actorOf(Foreman.props(extropy, locked1, _locker))
-        extropy.agentDAO.readConfigurationVersion should be(0)
         eventually {
             extropy.invariantDAO.salat.findOneById(locked1._id).get.status should be(InvariantStatus.Sync)
             extropy.invariantDAO.salat.findOneById(locked1._id).get.statusChanging should be(true)
