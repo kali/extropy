@@ -169,6 +169,6 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
     }
 
     implicit override val patienceConfig =
-        PatienceConfig(timeout = scaled(Span(5, Seconds)), interval = scaled(Span(250, Millis)))
+        PatienceConfig(timeout = scaled(Span(15, Seconds)), interval = scaled(Span(500, Millis)))
 
 }
