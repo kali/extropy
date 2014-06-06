@@ -6,7 +6,7 @@ Language- and Framework-agnostic declarative denormalization for MongoDB.
 
 ## What's the point
 
-In order to get the most of a MongoDB database, developpers have to jump through the painful hoops of denormalization.
+In order to get the most of a MongoDB database, developers have to jump through the painful hoops of denormalization.
 extropy aims at getting this complexity away.
 
 extropy main component is a MongoDB proxy. All interactions (at least the ones performing write ops) from the
@@ -20,7 +20,7 @@ MongoDB protocol.
 ## Example
 
 Imagine a minimalist blog engine. It has two collections: users, and posts.
-Posts containts comments as embedded subdocuments.
+Posts contain comments as embedded subdocuments.
 
 A fully-normalized data set could look like that (note that I have omited many fields... like the actual text for the posts):
 
@@ -266,7 +266,7 @@ Here is a non-exhaustive list of well-defined (at least in my mind) features in 
 * rules
     * alternative json syntax for collections with dot in the name [easy]
     * support more tie types: 1-to-1 embedded, 1-to-1 by reference [easy]
-    * support N-to-N ties (developper maintains follower array, extropy maintains followees) [medium]
+    * support N-to-N ties (developer maintains follower array, extropy maintains followees) [medium]
     * createdAt, updatedAt [easy to medium]
     * support denormalization depending on other denormalized data [hard]
 * proxy features and consistency level
