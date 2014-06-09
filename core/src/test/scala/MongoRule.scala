@@ -22,6 +22,17 @@ class MongoRuleSpec extends FlatSpec with Matchers {
     def m[A <: String, B] (elems: (A, B)*) : DBObject = MongoDBObject(elems:_*)
     import fixture._
 
+    val ruleWithDot = Rule(
+                    TopLevelContainer("db.dotted.collection.name"),
+                    NestedContainer(TopLevelContainer("db.dotted.collection.name"), "field"),
+                    SubDocumentTie("field"),
+                    Map("foo" -> CopyFieldsReaction("bar")))
+
+    val otherRuleWithDot = Rule(
+                    NestedContainer(TopLevelContainer("db.dotted.collection.name"), "field"),
+                    TopLevelContainer("db.dotted.collection.name"),
+                    FollowKeyTie("field"),
+                    Map("foo" -> CopyFieldsReaction("bar")))
 
     behavior of "Rule mongo serializer"
 
@@ -79,6 +90,19 @@ class MongoRuleSpec extends FlatSpec with Matchers {
         ))
     }
 
+    it should "serialize dotted name as an array" in {
+        ruleWithDot.toMongo should be ( MongoDBObject(
+            "rule" -> MongoDBObject("from" -> Seq("db", "dotted.collection.name"), "unwind" -> "field"),
+            "foo" -> "bar"
+        ))
+        otherRuleWithDot.toMongo should be ( MongoDBObject(
+            "rule" -> MongoDBObject("from" -> Seq("db", "dotted.collection.name", "field"),
+                                    "follow" -> "field",
+                                    "to" -> List("db", "dotted.collection.name")),
+            "foo" -> "bar"
+        ))
+    }
+
     behavior of "Rule mongo de-serializer"
 
     it should "de serialize searchableTitleRule" in {
@@ -109,5 +133,10 @@ class MongoRuleSpec extends FlatSpec with Matchers {
         val rule = Rule( TopLevelContainer("foo.bar"), TopLevelContainer("foo.bar"), SameDocumentTie(),
                         Map("baz" -> MyReaction("qux", 42) ) )
         Rule.fromMongo(rule.toMongo) should be ( rule )
+    }
+
+    it should "deserialize dotted name as array" taggedAs(Tag("foo")) in {
+        Rule.fromMongo(ruleWithDot.toMongo) should be (ruleWithDot)
+        Rule.fromMongo(otherRuleWithDot.toMongo) should be (otherRuleWithDot)
     }
 }

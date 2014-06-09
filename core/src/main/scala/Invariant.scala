@@ -136,14 +136,18 @@ case class Rule(effectContainer:Container, reactionContainer:Container, tie:Tie,
 
 object Rule {
 
-    def containerFromMongo(spec:AnyRef):Container = spec match {
-            case a:String => a.count( _=='.' ) match {
-                case 1 => TopLevelContainer(a)
-                case 2 => NestedContainer(  TopLevelContainer(a.split('.').take(2).mkString(".")),
-                                            a.split('.').last)
-            }
+    def containerFromMongo(spec:AnyRef):Container = {
+        val arraySpec:Seq[String] = spec match {
+            case s:String => s.split('.')
+            case a:Seq[_] => a.asInstanceOf[Seq[String]]
             case _ => throw new Error(s"can't parse container spec:" + spec)
         }
+        arraySpec match {
+            case Seq(db,collection) => TopLevelContainer(db,collection)
+            case Seq(db,collection,field) => NestedContainer(TopLevelContainer(db,collection), field)
+            case _ => throw new Error(s"can't parse container spec:" + spec)
+        }
+    }
 
     def fromMongo(j:MongoDBObject):Rule = {
         val (effectContainer,tieSpec):(Container,MongoDBObject)  = {
@@ -156,9 +160,9 @@ object Rule {
                 val name = tieSpec.as[String]("unwind")
                 (SubDocumentTie(name), NestedContainer(effectContainer.asInstanceOf[TopLevelContainer], name))
             case "follow" =>
-                (FollowKeyTie(tieSpec.as[String]("follow")), containerFromMongo(tieSpec.as[String]("to")))
+                (FollowKeyTie(tieSpec.as[String]("follow")), containerFromMongo(tieSpec("to")))
             case "search" =>
-                (ReverseKeyTie(tieSpec.as[String]("by")), containerFromMongo(tieSpec.as[String]("search")))
+                (ReverseKeyTie(tieSpec.as[String]("by")), containerFromMongo(tieSpec("search")))
             case _ => throw new Error(s"can't parse tie spec:" + tieSpec)
         }
         val reactions:Map[String,Reaction] = (j-"rule").map { case(name, value) => (name -> (value match {
@@ -186,9 +190,8 @@ abstract class Container {
 }
 
 
-case class TopLevelContainer(collectionFullName:String) extends Container {
-    val dbName = collectionFullName.split('.').head
-    val collectionName = collectionFullName.split('.').drop(1).mkString(".")
+case class TopLevelContainer(dbName:String, collectionName:String) extends Container {
+    val collectionFullName = dbName + "." + collectionName
 
     def collection = collectionFullName
 
@@ -219,7 +222,14 @@ case class TopLevelContainer(collectionFullName:String) extends Container {
     def toLabel = s"<i>$collectionFullName</i>"
     override def toString = collectionFullName
 
-    def toMongo:AnyRef = collectionFullName
+    def toMongo:AnyRef = if(collectionName.contains('.'))
+        List(dbName, collectionName)
+    else
+        collectionFullName
+}
+
+object TopLevelContainer {
+    def apply(fullName:String):TopLevelContainer = TopLevelContainer(fullName.split('.').head, fullName.split('.').drop(1).mkString("."))
 }
 
 case class NestedContainer(parent:TopLevelContainer, arrayField:String) extends Container {
@@ -244,7 +254,10 @@ case class NestedContainer(parent:TopLevelContainer, arrayField:String) extends 
             case _ => Set()
         })
     def toLabel = s"<i>$parent.$arrayField</i>"
-    def toMongo:AnyRef = parent.collectionFullName + "." + arrayField
+    def toMongo:AnyRef = parent.toMongo match {
+        case s:String => s + "." + arrayField
+        case l:Seq[_] => l.asInstanceOf[Seq[AnyRef]] ++ Seq(arrayField)
+    }
 }
 
 // TIE
