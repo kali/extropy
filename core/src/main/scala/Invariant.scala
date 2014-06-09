@@ -158,7 +158,7 @@ object Rule {
             case "same" => (SameDocumentTie(), effectContainer)
             case "unwind" =>
                 val name = tieSpec.as[String]("unwind")
-                (SubDocumentTie(name), NestedContainer(effectContainer.asInstanceOf[TopLevelContainer], name))
+                (UnwindTie(name), NestedContainer(effectContainer.asInstanceOf[TopLevelContainer], name))
             case "follow" =>
                 (FollowKeyTie(tieSpec.as[String]("follow")), containerFromMongo(tieSpec("to")))
             case "search" =>
@@ -344,7 +344,7 @@ case class ReverseKeyTie(reactionFieldName:String) extends Tie {
     )
 }
 
-case class SubDocumentTie(fieldName:String) extends Tie {
+case class UnwindTie(fieldName:String) extends Tie {
     val effectContainerMonitoredFields:Set[String] = Set()
     val reactionContainerMonitoredFields = Set("_id")
     def propageToMultiple = true

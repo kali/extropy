@@ -25,7 +25,7 @@ class MongoRuleSpec extends FlatSpec with Matchers {
     val ruleWithDot = Rule(
                     TopLevelContainer("db.dotted.collection.name"),
                     NestedContainer(TopLevelContainer("db.dotted.collection.name"), "field"),
-                    SubDocumentTie("field"),
+                    UnwindTie("field"),
                     Map("foo" -> CopyFieldsReaction("bar")))
 
     val otherRuleWithDot = Rule(

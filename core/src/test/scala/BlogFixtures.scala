@@ -35,10 +35,10 @@ case class BlogFixtures(dbName:String) {
     val authorNameInCommentRule = Rule( comments, users, FollowKeyTie("authorId"),
                                         Map("authorName" -> CopyFieldsReaction("name")))
 
-    val commentCountInPostRule = Rule(  posts, comments, SubDocumentTie("comments"),
+    val commentCountInPostRule = Rule(  posts, comments, UnwindTie("comments"),
                                         Map("commentCount" -> JSReaction("function(cursor) cursor.size()", List())))
 
-    val averageRatingInPostRule = Rule( posts, comments, SubDocumentTie("comments"),
+    val averageRatingInPostRule = Rule( posts, comments, UnwindTie("comments"),
                                         Map("averageRating" ->
         JSReaction("""function(cursor) {
                         var total=0;
