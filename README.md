@@ -151,7 +151,9 @@ Containers are "places" where denormalized field can occur:
     Just add a dot and the array field name to the collection: "blog.posts.comments".
 
 Notes:
-* These syntaxes break when the collection name contains a dot, which is unfortunately allowed but... I have a plan.
+* If the collection name contains a dot, an alternative syntax must be used: an array instead of a string. The
+  first element is assumed to be the DB name, the second one the collection name. If there is a third one, extropy
+  assumes it is the field name for a Nested container.
 * Nesting a document directly, object-in-object, with no array is in the roadmap.
 * Nested subdocument MUST contain an _id.
 * Only one level of sub document is supported.
@@ -264,7 +266,6 @@ standalone and sharded setup (with proxies between your app and the mongoS) will
 
 Here is a non-exhaustive list of well-defined (at least in my mind) features in the todo list:
 * rules
-    * alternative json syntax for collections with dot in the name [easy]
     * support more tie types: 1-to-1 embedded, 1-to-1 by reference [easy]
     * support N-to-N ties (developer maintains follower array, extropy maintains followees) [medium]
     * createdAt, updatedAt [easy to medium]
