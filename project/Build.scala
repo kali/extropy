@@ -12,7 +12,7 @@ object ExtropyBuildSettings {
 
     val buildSettings = Defaults.defaultSettings ++ Revolver.settings ++ Seq (
         version := "0.0.1",
-        scalaVersion := "2.11.0",
+        scalaVersion := "2.11.1",
         resolvers += "Typesafe Repository" at "http://repo.typesafe.com/typesafe/releases/",
 //        resolvers += Resolver.sonatypeRepo("snapshots"),
 //        unmanagedSourceDirectories in Test += file("core/src/fixture/scala"),
@@ -27,7 +27,7 @@ object ExtropyBuildSettings {
             "com.typesafe.scala-logging" %% "scala-logging-slf4j" % "2.1.2",
             "org.scalatest" %% "scalatest" % "2.1.3" % "test",
 //            "org.scalamock" %% "scalamock-scalatest-support" % "3.0.1" % "test",
-            "de.flapdoodle.embed" % "de.flapdoodle.embed.mongo" % "1.45" % "test"
+            "de.flapdoodle.embed" % "de.flapdoodle.embed.mongo" % "1.46.0" % "test"
         )
    ) ++ net.virtualvoid.sbt.graph.Plugin.graphSettings
 

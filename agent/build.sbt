@@ -2,7 +2,7 @@ name := "extropy-proxy"
 
 ExtropyBuildSettings.buildSettings
 
-val akkaVersion = "2.3.2"
+val akkaVersion = "2.3.3"
 
 libraryDependencies ++= Seq(
     "com.typesafe.akka" %% "akka-actor" % akkaVersion,
