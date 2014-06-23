@@ -30,7 +30,7 @@ class Overseer(extropy:BaseExtropyContext, name:String) extends Actor {
     val pings = context.system.scheduler.schedule(0.milliseconds, extropy.overseerHeartBeat,
                     self, HeartBeat)(executor=context.system.dispatcher)
 
-    val agent = context.actorOf(ExtropyAgent.props(id, extropy, self), "agent")
+    val agent = context.actorOf(ExtropyAgent.props(id, extropy, self, None), "agent")
 
     def receive = {
         case c:DynamicConfiguration => sender ! AckDynamicConfiguration(c)

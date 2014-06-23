@@ -111,7 +111,9 @@ class ProxyServer(val extropy:BaseExtropyContext, val bind:InetSocketAddress, va
     var configuration = extropy.pullConfiguration
     val id = "proxy-" + extropy.hostname + "/" + bind.toString
     log.info(s"Setup proxy: $id")
-    val agent = context.actorOf(ExtropyAgent.props("proxy-" + extropy.hostname + "/" + bind.toString, extropy, self), "agent")
+
+    val mappingData = Some(ProxyMapping(bind.toString, send.toString))
+    val agent = context.actorOf(ExtropyAgent.props("proxy-" + extropy.hostname + "/" + bind.toString, extropy, self, mappingData), "agent")
 
     import scala.collection.mutable.Set
     val pendingAcknowledgement:Set[ActorRef] = Set()

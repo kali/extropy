@@ -29,7 +29,7 @@ abstract class FullStackSpec extends TestKit(ActorSystem("proxyspec")) with Flat
     implicit override val patienceConfig =
         PatienceConfig(timeout = scaled(Span(3, Seconds)), interval = scaled(Span(100, Millis)))
 
-    def withProxiedClient(testCode:(BaseExtropyContext, BlogFixtures, MongoClient)=>Any, loadRules:Boolean=true) {
+    def withProxiedClient(testCode:(BaseExtropyContext, BlogFixtures, MongoClient, Int, Int)=>Any, loadRules:Boolean=true) {
         withExtropyAndBlog({ (extropy,blog) =>
             val port = de.flapdoodle.embed.process.runtime.Network.getFreeServerPort
             val proxy = system.actorOf(ProxyServer.props(
@@ -48,7 +48,7 @@ abstract class FullStackSpec extends TestKit(ActorSystem("proxyspec")) with Flat
 
             val mongoClient = MongoClient("127.0.0.1", port)
             try {
-                testCode(extropy, blog, mongoClient)
+                testCode(extropy, blog, mongoClient, port, mongoBackendPort)
             } finally {
                 proxy ! PoisonPill
             }
@@ -65,7 +65,14 @@ class FullStackProxySpec extends FullStackSpec {
 
     behavior of s"An extropy proxy"
 
-    it should "propagate and acknowledge configuration bumps" in withProxiedClient { (extropy, blog, mongoClient) =>
+    it should "manifest itself in the agents collection" in withProxiedClient { (extropy, blog, mongoClient, proxyPort, backendPort) =>
+        extropy.agentDAO.salat.count() should be(1)
+        extropy.agentDAO.salat.findOne(MongoDBObject.empty).get.mapping should be(
+            Some(ProxyMapping(s"/127.0.0.1:$proxyPort",s"/127.0.0.1:$backendPort"))
+        )
+    }
+
+    it should "propagate and acknowledge configuration bumps" in withProxiedClient { (extropy, blog, mongoClient, proxyPort, backendPort) =>
         val db = mongoClient("test")
         val initial = extropy.agentDAO.bumpConfigurationVersion
         eventually {
@@ -83,7 +90,7 @@ class FullStackProxySpec extends FullStackSpec {
         extropy.agentDAO.collection.findOne(MongoDBObject.empty).get.getAs[Long]("configurationVersion").get should be(next)
     }
 
-    it should "handle addInvariant command" in withProxiedClient({ (extropy, blog, mongoClient) =>
+    it should "handle addInvariant command" in withProxiedClient({ (extropy, blog, mongoClient, proxyPort, backendPort) =>
         import blog._
         val db = mongoClient(dbName)
         allRules.size should be > (0)
@@ -95,7 +102,7 @@ class FullStackProxySpec extends FullStackSpec {
         extropy.invariantDAO.collection.size should be( allRules.size )
     }, false)
 
-    it should "handle addRule command" in withProxiedClient({ (extropy, blog, mongoClient) =>
+    it should "handle addRule command" in withProxiedClient({ (extropy, blog, mongoClient, proxyPort, backendPort) =>
         import blog._
         val db = mongoClient(dbName)
         allRules.size should be > (0)
@@ -107,7 +114,7 @@ class FullStackProxySpec extends FullStackSpec {
 
     behavior of "a proxy + worker"
 
-    it should "should get new invariants in verified state" in withProxiedClient({ (extropy, blog, mongoClient) =>
+    it should "should get new invariants in verified state" in withProxiedClient({ (extropy, blog, mongoClient, proxyPort, backendPort) =>
         import blog._
         val overseer = system.actorOf(Overseer.props(extropy, dbName), dbName)
         extropy.invariantDAO.collection.size should be( 0 )
@@ -131,14 +138,14 @@ abstract class BaseProtoServerSpec extends FullStackSpec {
 
     behavior of s"An extropy proxy with protocol: $mongoWantedVersion"
 
-    it should "deal with insert" in withProxiedClient { (extropy, blog, client) =>
+    it should "deal with insert" in withProxiedClient { (extropy, blog, client, proxyPort, backendPort) =>
         import blog._
         client(dbName)("posts").insert(post1)
         client(dbName)("posts").size should be(1)
         allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
     }
 
-    it should "deal with update" in withProxiedClient { (extropy, blog, client) =>
+    it should "deal with update" in withProxiedClient { (extropy, blog, client, proxyPort, backendPort) =>
         import blog._
         client(dbName)("users").insert(userLiz)
         client(dbName)("posts").insert(post1)
@@ -150,7 +157,7 @@ abstract class BaseProtoServerSpec extends FullStackSpec {
         allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
     }
 
-    it should "deal with delete" in withProxiedClient { (extropy, blog, client) =>
+    it should "deal with delete" in withProxiedClient { (extropy, blog, client, proxyPort, backendPort) =>
         import blog._
         client(dbName)("users").insert(userLiz)
         client(dbName)("posts").insert(post1)
@@ -160,7 +167,6 @@ abstract class BaseProtoServerSpec extends FullStackSpec {
         client(dbName)("posts").size should be(0)
         allRules.foreach { rule => rule.checkAll(extropy.payloadMongo) should be ('empty) }
     }
-
 
     implicit override val patienceConfig =
         PatienceConfig(timeout = scaled(Span(3, Seconds)), interval = scaled(Span(100, Millis)))

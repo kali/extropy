@@ -20,18 +20,20 @@ import mongoutils._
 
 import com.typesafe.scalalogging.slf4j.StrictLogging
 
-case class ExtropyAgentDescription(_id:String, emlp:MongoLock, configurationVersion:Long=(-1L))
+case class ProxyMapping(proxy:String, backend:String)
+case class ExtropyAgentDescription(_id:String, emlp:MongoLock, configurationVersion:Long=(-1L), mapping:Option[ProxyMapping])
 
-class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration)(implicit ctx: com.novus.salat.Context) extends StrictLogging {
+class ExtropyAgentDescriptionDAO(val db:MongoDB, val pingValidity:FiniteDuration)(implicit ctx:Context)
+        extends StrictLogging {
     val collection = db("agents")
     val salat = new SalatDAO[ExtropyAgentDescription,ObjectId](collection) {}
 
     val agentMLP = MongoLockingPool(collection, pingValidity)
 
-    def register(id:String, configurationVersion:Long) {
+    def register(agent:ExtropyAgentDescription) {
         agentMLP.cleanupOldLocks
-        logger.debug(s"Registering agent:$id (at version:$configurationVersion)")
-        agentMLP.insertLocked(MongoDBObject("_id" -> id, "configurationVersion" -> configurationVersion))(LockerIdentity(id))
+        logger.debug(s"Registering agent:$agent")
+        agentMLP.insertLocked(grater[ExtropyAgentDescription].asDBObject(agent))(LockerIdentity(agent._id))
     }
 
     def ping(id:String, validity:FiniteDuration) {

@@ -22,14 +22,14 @@ class AgentSpec extends TestKit(ActorSystem("agentspec"))
     behavior of "An extropy agent"
 
     it should "prevent two agents to share their name" in withExtropyAndBlog { (extropy,blog) =>
-        val agent1 = system.actorOf(ExtropyAgent.props(blog.dbName, extropy, testActor))
+        val agent1 = system.actorOf(ExtropyAgent.props(blog.dbName, extropy, testActor, None))
         an [Exception] should be thrownBy {
-            system.actorOf(ExtropyAgent.props(blog.dbName, extropy, testActor))
+            system.actorOf(ExtropyAgent.props(blog.dbName, extropy, testActor, None))
         }
     }
 
     it should "maintain ping record in mongo" in withExtropyAndBlog { (extropy,blog) =>
-        val agent = system.actorOf(ExtropyAgent.props(blog.dbName, extropy, testActor))
+        val agent = system.actorOf(ExtropyAgent.props(blog.dbName, extropy, testActor, None))
         eventually {
             extropy.agentDAO.salat.findOne(MongoDBObject("_id" -> blog.dbName)) should not be('empty)
         }
@@ -40,7 +40,7 @@ class AgentSpec extends TestKit(ActorSystem("agentspec"))
     }
 
     it should "notify configuration changes to its client" in withExtropyAndBlog { (extropy,blog) =>
-        val agent = system.actorOf(ExtropyAgent.props(blog.dbName, extropy, testActor), "agent")
+        val agent = system.actorOf(ExtropyAgent.props(blog.dbName, extropy, testActor, None), "agent")
         eventually {
             extropy.agentDAO.bumpConfigurationVersion
             expectMsgClass(classOf[DynamicConfiguration])
@@ -48,7 +48,7 @@ class AgentSpec extends TestKit(ActorSystem("agentspec"))
     }
 
     it should "propagate configuration changes ack to mongo" in withExtropyAndBlog { (extropy,blog) =>
-        val agent = system.actorOf(ExtropyAgent.props(blog.dbName, extropy, testActor))
+        val agent = system.actorOf(ExtropyAgent.props(blog.dbName, extropy, testActor, None))
         agent ! AckDynamicConfiguration(DynamicConfiguration(12, List()))
         eventually {
             val agentDoc = extropy.agentDAO.salat.findOne(MongoDBObject("_id" -> blog.dbName)).get
@@ -61,5 +61,4 @@ class AgentSpec extends TestKit(ActorSystem("agentspec"))
         PatienceConfig(timeout = scaled(Span(12, Seconds)), interval = scaled(Span(500, Millis)))
 
     override def afterAll { TestKit.shutdownActorSystem(system) ; super.afterAll }
-
 }

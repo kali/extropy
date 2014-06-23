@@ -117,7 +117,7 @@ class WorkerSpec extends TestKit(ActorSystem("workerspec"))
 
         val name = "overseer"
         val overseer = system.actorOf(Overseer.props(extropy, name), name)
-        val otherAgent = system.actorOf(ExtropyAgent.props("other", extropy, testActor), "other")
+        val otherAgent = system.actorOf(ExtropyAgent.props("other", extropy, testActor, None), "other")
         eventually {
             extropy.agentDAO.readMinimumConfigurationVersion should be(0)
         }

@@ -29,6 +29,11 @@ package object custom {
 
 import custom.ctx
 
+abstract sealed class ClusterKind;
+object ShardedKind extends ClusterKind;
+object ReplicaKind extends ClusterKind;
+object StandaloneKind extends ClusterKind;
+
 
 trait BaseExtropyContext {
     val hostname = java.net.InetAddress.getLocalHost.getHostName
@@ -43,7 +48,7 @@ trait BaseExtropyContext {
     def agentDAO:ExtropyAgentDescriptionDAO
     def invariantDAO:InvariantDAO
 
-    def payloadMongo:MongoClient
+    val payloadMongo:MongoClient
 
     // invariant stuff
     def prospect(implicit by:LockerIdentity):Option[Invariant] =
@@ -69,6 +74,16 @@ trait BaseExtropyContext {
     // dynamic configuration management
     def pullConfiguration = DynamicConfiguration(agentDAO.readConfigurationVersion,
         invariantDAO.salat.find(MongoDBObject.empty).toList)
+
+    // replica set mapping management
+    val clusterKind:ClusterKind = {
+        if(payloadMongo("config")("version").count() > 0)
+            ShardedKind
+        else if(payloadMongo("local")("oplog.rs").count() > 0 || payloadMongo("local")("oplog.rs").count() > 0)
+            ReplicaKind
+        else
+            StandaloneKind
+    }
 
 }
 

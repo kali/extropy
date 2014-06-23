@@ -10,6 +10,7 @@ import akka.event.Logging
 
 import scala.concurrent.duration._
 
+import com.mongodb.casbah.Imports._
 import mongoutils._
 
 class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:ActorRef) extends Actor {
@@ -52,8 +53,8 @@ class ExtropyAgent(val id:String, val extropy:BaseExtropyContext, val client:Act
 }
 
 object ExtropyAgent {
-    def props(id:String, extropy:BaseExtropyContext, client:ActorRef) = {
-        extropy.agentDAO.register(id, extropy.agentDAO.readConfigurationVersion)
+    def props(id:String, extropy:BaseExtropyContext, client:ActorRef, proxyMapping:Option[ProxyMapping]) = {
+        extropy.agentDAO.register(ExtropyAgentDescription(id, null, extropy.agentDAO.readConfigurationVersion, proxyMapping))
         Props(classOf[ExtropyAgent], id, extropy, client)
     }
 }

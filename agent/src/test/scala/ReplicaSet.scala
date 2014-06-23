@@ -29,6 +29,8 @@ import mongoutils.BSONObjectConversions._
 
 import scala.collection.mutable.Buffer
 
+object SlowTest extends Tag("slow")
+
 class ReplicaSet {
 
     def mongoWantedVersion:Option[IFeatureAwareVersion] = None
@@ -102,7 +104,7 @@ class ReplicaSetSupportSpec extends TestKit(ActorSystem("replicaset"))
 
     behavior of "Replica set testing prerequisites"
 
-    it should "start a working replica set" in {
+    it should "start a working replica set" taggedAs(SlowTest) in {
         val conf = replicaset.mongoBackendClient("local")("system.replset").findOne().get
         conf.as[List[_]]("members") should have size(3)
         val status = replicaset.status
@@ -110,7 +112,7 @@ class ReplicaSetSupportSpec extends TestKit(ActorSystem("replicaset"))
         status.as[List[BSONObject]]("members").count( _.as[String]("stateStr") == "SECONDARY") should be(2)
     }
 
-    it should "start a proxy for each member" taggedAs(Tag("k")) in {
+    it should "start a proxy for each member" taggedAs(SlowTest) in {
     }
 
     def startProxies {
@@ -134,6 +136,16 @@ class ReplicaSetSupportSpec extends TestKit(ActorSystem("replicaset"))
         eventually {
             replicaset.mongoBackendClient(extropyDbName)("agents") should have size(3)
         }
+    }
+
+    behavior of "Extropy replica set support"
+
+    it should "detect it is running against a replica set setup" taggedAs(SlowTest) in {
+        val extropy = ExtropyContext(replicaset.mongoBackendClient("whatever"), replicaset.mongoBackendClient)
+        extropy.clusterKind should be(ReplicaKind)
+    }
+
+    it should "register proxy mappings in agent collection" taggedAs(SlowTest) in {
     }
 
     implicit override val patienceConfig =
